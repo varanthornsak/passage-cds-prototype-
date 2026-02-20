@@ -7,3 +7,11 @@ sqlalchemy
 psycopg2-binary
 cryptography
 scikit-learn
+Flask
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-Login
+psycopg2-binary
+python-dotenv
+cryptography
+gunicorn
