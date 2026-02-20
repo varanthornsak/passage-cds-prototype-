@@ -1,10 +1,8 @@
 import streamlit as st
 import pandas as pd
-import os
 from sqlalchemy import create_engine, Column, Integer, Float, String, Boolean, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
-from cryptography.fernet import Fernet
 
 # -----------------------------
 # PAGE CONFIG
@@ -12,21 +10,10 @@ from cryptography.fernet import Fernet
 st.set_page_config(page_title="PASSAGE Healthspan CDS", layout="wide")
 
 # -----------------------------
-# SECRETS (Streamlit Cloud)
+# DATABASE (ใช้ SQLite เลย ไม่ต้อง secrets)
 # -----------------------------
-SECRET_KEY = st.secrets.get("SECRET_KEY", "devkey")
-DATABASE_URL = st.secrets.get("DATABASE_URL", "sqlite:///health.db")
-FERNET_KEY = st.secrets.get("FERNET_KEY")
+DATABASE_URL = "sqlite:///health.db"
 
-if not FERNET_KEY:
-    st.error("FERNET_KEY not set in Streamlit Secrets")
-    st.stop()
-
-fernet = Fernet(FERNET_KEY.encode())
-
-# -----------------------------
-# DATABASE
-# -----------------------------
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -77,7 +64,7 @@ def calculate_confidence(data):
 # -----------------------------
 # UI
 # -----------------------------
-st.title("🧠 PASSAGE Healthspan Clinical Decision Support")
+st.title("PASSAGE Healthspan Clinical Decision Support")
 
 menu = st.sidebar.selectbox("Navigation", ["New Assessment", "Population Dashboard"])
 
@@ -126,10 +113,8 @@ if menu == "New Assessment":
                 healthspan = calculate_healthspan(data)
                 confidence = calculate_confidence(data)
 
-                encrypted_name = fernet.encrypt(patient_name.encode()).decode()
-
                 record = Assessment(
-                    patient_name=encrypted_name,
+                    patient_name=patient_name,
                     gait_speed=gait_speed,
                     grip_strength=grip_strength,
                     tug_time=tug_time,
