@@ -1,202 +1,203 @@
 import streamlit as st
 import pandas as pd
-from sqlalchemy import create_engine, Column, Integer, Float, String, Boolean, DateTime
-from sqlalchemy.orm import declarative_base, sessionmaker
+import uuid
 from datetime import datetime
 
-# -----------------------------
-# PAGE CONFIG
-# -----------------------------
-st.set_page_config(page_title="PASSAGE Healthspan CDS", layout="wide")
-
-# -----------------------------
-# DATABASE
-# -----------------------------
-DATABASE_URL = "sqlite:///health.db"
-
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
-session = Session()
-Base = declarative_base()
-
-class Assessment(Base):
-    __tablename__ = "assessments"
-
-    id = Column(Integer, primary_key=True)
-    patient_name = Column(String)
-    gait_speed = Column(Float)
-    grip_strength = Column(Float)
-    tug_time = Column(Float)
-    moca_score = Column(Integer)
-    phq9 = Column(Integer)
-    gad7 = Column(Integer)
-    sbp = Column(Float)
-    hba1c = Column(Float)
-    whoqol = Column(Float)
-    healthspan_index = Column(Float)
-    ai_confidence = Column(Float)
-    consent = Column(Boolean)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-Base.metadata.create_all(engine)
-
-# -----------------------------
-# SCORING ENGINE
-# -----------------------------
-def calculate_healthspan(data):
-    score = 0
-    score += min(data["gait_speed"] / 1.2, 1) * 15
-    score += min(data["grip_strength"] / 35, 1) * 10
-    score += (1 - min(data["tug_time"] / 20, 1)) * 10
-    score += (data["moca_score"] / 30) * 15
-    score += (1 - data["phq9"] / 27) * 10
-    score += (1 - data["gad7"] / 21) * 5
-    score += (1 - min(data["sbp"] / 180, 1)) * 10
-    score += (1 - min(data["hba1c"] / 10, 1)) * 10
-    score += (data["whoqol"] / 100) * 15
-    return round(score, 2)
-
-def calculate_confidence(data):
-    filled = sum(1 for v in data.values() if v is not None)
-    total = len(data)
-    return round((filled / total) * 100, 2)
-
-# -----------------------------
-# UI
-# -----------------------------
-st.title("PASSAGE Healthspan Clinical Decision Support")
-
-menu = st.sidebar.selectbox(
-    "Navigation",
-    ["New Assessment", "Population Dashboard", "User Guide"]
+# --------------------------------------------------
+# Page Configuration
+# --------------------------------------------------
+st.set_page_config(
+    page_title="PASSAGE-CDS | CCA Risk Stratification",
+    page_icon="🩺",
+    layout="wide"
 )
 
-# -----------------------------
-# NEW ASSESSMENT
-# -----------------------------
-if menu == "New Assessment":
-    st.header("New Clinical Assessment")
+# --------------------------------------------------
+# Session State Initialization
+# --------------------------------------------------
+if "registry" not in st.session_state:
+    st.session_state.registry = []
 
-    with st.form("assessment_form"):
-        col1, col2 = st.columns(2)
+# --------------------------------------------------
+# Risk Calculation Logic (Clinical Layer)
+# --------------------------------------------------
+def calculate_cca_risk(age, raw_fish, lft_abnormal, red_flags, frailty_score):
+    score = 0
 
-        with col1:
-            patient_name = st.text_input("Patient Name")
-            gait_speed = st.number_input("Gait Speed (m/s)", 0.0, 3.0)
-            grip_strength = st.number_input("Grip Strength (kg)", 0.0, 100.0)
-            tug_time = st.number_input("TUG Time (sec)", 0.0, 60.0)
-            moca_score = st.number_input("MoCA Score", 0, 30)
+    if age >= 40:
+        score += 1
+    if raw_fish:
+        score += 2
+    if lft_abnormal:
+        score += 2
+    if red_flags >= 2:
+        score += 3
+    if frailty_score >= 2:
+        score += 1
 
-        with col2:
-            phq9 = st.number_input("PHQ-9 Score", 0, 27)
-            gad7 = st.number_input("GAD-7 Score", 0, 21)
-            sbp = st.number_input("Systolic BP", 0.0, 250.0)
-            hba1c = st.number_input("HbA1c (%)", 0.0, 15.0)
-            whoqol = st.number_input("WHOQOL-OLD Score (0-100)", 0.0, 100.0)
-
-        consent = st.checkbox("I consent to PDPA-compliant data processing")
-        submitted = st.form_submit_button("Submit Assessment")
-
-        if submitted:
-            if not consent:
-                st.warning("Consent required")
-            else:
-                data = {
-                    "gait_speed": gait_speed,
-                    "grip_strength": grip_strength,
-                    "tug_time": tug_time,
-                    "moca_score": moca_score,
-                    "phq9": phq9,
-                    "gad7": gad7,
-                    "sbp": sbp,
-                    "hba1c": hba1c,
-                    "whoqol": whoqol,
-                }
-
-                healthspan = calculate_healthspan(data)
-                confidence = calculate_confidence(data)
-
-                record = Assessment(
-                    patient_name=patient_name,
-                    gait_speed=gait_speed,
-                    grip_strength=grip_strength,
-                    tug_time=tug_time,
-                    moca_score=moca_score,
-                    phq9=phq9,
-                    gad7=gad7,
-                    sbp=sbp,
-                    hba1c=hba1c,
-                    whoqol=whoqol,
-                    healthspan_index=healthspan,
-                    ai_confidence=confidence,
-                    consent=True
-                )
-
-                session.add(record)
-                session.commit()
-
-                st.success("Assessment saved successfully")
-                st.metric("Healthspan Index", healthspan)
-                st.metric("AI Confidence (%)", confidence)
-
-# -----------------------------
-# DASHBOARD
-# -----------------------------
-if menu == "Population Dashboard":
-    st.header("Population Health Dashboard")
-
-    records = session.query(Assessment).all()
-
-    if records:
-        df = pd.DataFrame([{
-            "Healthspan": r.healthspan_index,
-            "Confidence": r.ai_confidence,
-            "Date": r.created_at
-        } for r in records])
-
-        st.line_chart(df.set_index("Date")["Healthspan"])
-        st.metric("Population Average", round(df["Healthspan"].mean(), 2))
-        st.metric("Average AI Confidence", round(df["Confidence"].mean(), 2))
+    if score >= 6:
+        return "High Risk"
+    elif score >= 3:
+        return "Moderate Risk"
     else:
-        st.info("No data available yet.")
+        return "Low Risk"
 
-# -----------------------------
-# USER GUIDE PAGE
-# -----------------------------
-if menu == "User Guide":
-    st.header("User Guide – Detailed Instructions")
+# --------------------------------------------------
+# Sidebar Navigation
+# --------------------------------------------------
+st.sidebar.title("PASSAGE-CDS")
+page = st.sidebar.radio(
+    "Navigation",
+    ["Home", "New Assessment", "Patient Registry", "Analytics Dashboard", "About"]
+)
+
+# --------------------------------------------------
+# Global Clinical Disclaimer
+# --------------------------------------------------
+st.sidebar.warning(
+    "Clinical Decision Support Prototype.\n"
+    "Not a replacement for physician diagnosis or imaging confirmation."
+)
+
+# --------------------------------------------------
+# HOME PAGE
+# --------------------------------------------------
+if page == "Home":
+
+    st.title("PASSAGE-CDS")
+    st.subheader("Cholangiocarcinoma Risk Stratification & Functional Screening")
 
     st.markdown("""
-### Overview
-PASSAGE Healthspan CDS integrates functional, cognitive, mental health, cardiometabolic,
-and quality-of-life measures into a unified Healthspan Index.
+    PASSAGE-CDS integrates:
+    - Epidemiologic risk factors
+    - Symptom-based red flags
+    - Liver function indicators
+    - Functional frailty markers
+    
+    Purpose:
+    Enhance early referral for hepatobiliary imaging.
+    """)
 
-### New Assessment
-1. Enter patient name.
-2. Input functional metrics (Gait Speed, Grip Strength, TUG).
-3. Enter cognitive score (MoCA).
-4. Enter mental health scores (PHQ-9, GAD-7).
-5. Enter cardiometabolic indicators (SBP, HbA1c).
-6. Enter WHOQOL-OLD score.
-7. Confirm PDPA consent.
-8. Click Submit.
+    st.info("Designed for research and pilot clinical deployment (2026).")
 
-### Healthspan Index
-Composite score (0–100) derived from all domains.
-Higher scores indicate better overall healthspan.
+# --------------------------------------------------
+# NEW ASSESSMENT PAGE
+# --------------------------------------------------
+elif page == "New Assessment":
 
-### AI Confidence
-Represents percentage of completed input variables.
-Does not represent predictive certainty.
+    st.title("New Patient Assessment")
 
-### Population Dashboard
-Displays:
-- Time-series Healthspan trend
-- Population average score
-- Average confidence level
+    col1, col2 = st.columns(2)
 
-### Intended Use
-This tool is designed for research, preventive screening,
-and population health analytics. It is not a replacement
-for physician clinical judgment.
-""")
+    with col1:
+        age = st.number_input("Age", 18, 100)
+        raw_fish = st.checkbox("History of raw fish consumption")
+        lft_abnormal = st.checkbox("Abnormal Liver Function Test")
+    
+    with col2:
+        red_flags = st.slider("Number of Red Flag Symptoms", 0, 5)
+        frailty_score = st.slider("Frailty Indicators (0–3)", 0, 3)
+
+    if st.button("Calculate Risk"):
+
+        risk_level = calculate_cca_risk(
+            age, raw_fish, lft_abnormal, red_flags, frailty_score
+        )
+
+        patient_id = str(uuid.uuid4())[:8]
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        record = {
+            "Patient ID": patient_id,
+            "Timestamp": timestamp,
+            "Age": age,
+            "Raw Fish": raw_fish,
+            "LFT Abnormal": lft_abnormal,
+            "Red Flags": red_flags,
+            "Frailty Score": frailty_score,
+            "Risk Level": risk_level
+        }
+
+        st.session_state.registry.append(record)
+
+        st.subheader("Risk Stratification Result")
+
+        if risk_level == "High Risk":
+            st.error("HIGH RISK – Recommend Ultrasound & Hepatobiliary Referral")
+        elif risk_level == "Moderate Risk":
+            st.warning("MODERATE RISK – Monitor & Consider Imaging")
+        else:
+            st.success("LOW RISK – Routine Follow-up")
+
+        df_single = pd.DataFrame([record])
+
+        st.download_button(
+            "Download This Assessment (CSV)",
+            df_single.to_csv(index=False),
+            "assessment.csv",
+            "text/csv"
+        )
+
+# --------------------------------------------------
+# PATIENT REGISTRY
+# --------------------------------------------------
+elif page == "Patient Registry":
+
+    st.title("Patient Registry")
+
+    if len(st.session_state.registry) == 0:
+        st.info("No assessments recorded yet.")
+    else:
+        df_registry = pd.DataFrame(st.session_state.registry)
+        st.dataframe(df_registry, use_container_width=True)
+
+        st.download_button(
+            "Download Full Registry (CSV)",
+            df_registry.to_csv(index=False),
+            "registry.csv",
+            "text/csv"
+        )
+
+# --------------------------------------------------
+# ANALYTICS DASHBOARD
+# --------------------------------------------------
+elif page == "Analytics Dashboard":
+
+    st.title("Analytics Dashboard")
+
+    if len(st.session_state.registry) == 0:
+        st.info("No data available.")
+    else:
+        df = pd.DataFrame(st.session_state.registry)
+
+        st.subheader("Risk Distribution")
+        st.bar_chart(df["Risk Level"].value_counts())
+
+        st.subheader("Age Distribution")
+        st.bar_chart(df["Age"])
+
+# --------------------------------------------------
+# ABOUT PAGE
+# --------------------------------------------------
+elif page == "About":
+
+    st.title("About PASSAGE-CDS")
+
+    st.markdown("""
+    PASSAGE-CDS is a research-grade clinical decision support prototype 
+    designed to enhance early detection pathways for cholangiocarcinoma.
+
+    Framework:
+    - Risk stratification model
+    - Symptom trigger system
+    - Functional decline assessment
+    - Clinical referral recommendation layer
+
+    Intended for:
+    - Research deployment
+    - Pilot screening programs
+    - Digital health innovation studies
+    """)
+
+    st.markdown("---")
+    st.caption("PASSAGE-CDS Prototype | 2026 | Research Use Only")
