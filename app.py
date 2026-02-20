@@ -64,7 +64,7 @@ def calculate_confidence(data):
 # -----------------------------
 # UI
 # -----------------------------
-st.title("🧠 PASSAGE Healthspan Clinical Decision Support")
+st.title("PASSAGE Healthspan Clinical Decision Support")
 
 menu = st.sidebar.selectbox(
     "Navigation",
