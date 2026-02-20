@@ -200,3 +200,136 @@ This tool is designed for research, preventive screening,
 and population health analytics. It is not a replacement
 for physician clinical judgment.
 """)
+# ==========================================================
+# PROFESSIONAL UPGRADE MODULE
+# Paste below your existing code
+# ==========================================================
+
+import plotly.express as px
+from fpdf import FPDF
+import tempfile
+
+# ----------------------------------------------------------
+# Severity Badge Function
+# ----------------------------------------------------------
+def severity_badge(risk_level):
+    if risk_level == "High Risk":
+        return "🔴 HIGH RISK"
+    elif risk_level == "Moderate Risk":
+        return "🟠 MODERATE RISK"
+    else:
+        return "🟢 LOW RISK"
+
+# ----------------------------------------------------------
+# Risk Transparency Panel
+# ----------------------------------------------------------
+def show_risk_explanation():
+    with st.expander("View Risk Scoring Criteria"):
+        st.markdown("""
+        **Scoring Framework**
+        - Age ≥ 40 → +1
+        - Raw Fish Consumption → +2
+        - Abnormal LFT → +2
+        - ≥2 Red Flag Symptoms → +3
+        - Frailty Indicators ≥2 → +1
+        
+        Risk Classification:
+        - 0–2 → Low Risk
+        - 3–5 → Moderate Risk
+        - ≥6 → High Risk
+        """)
+
+# ----------------------------------------------------------
+# Generate Professional PDF Report
+# ----------------------------------------------------------
+def generate_pdf(record):
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, "PASSAGE-CDS Assessment Report", ln=True)
+
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 10, f"Patient ID: {record['Patient ID']}", ln=True)
+    pdf.cell(0, 10, f"Date: {record['Timestamp']}", ln=True)
+    pdf.cell(0, 10, f"Risk Level: {record['Risk Level']}", ln=True)
+
+    pdf.ln(10)
+
+    for key, value in record.items():
+        pdf.cell(0, 8, f"{key}: {value}", ln=True)
+
+    pdf.ln(10)
+    pdf.multi_cell(0, 8,
+        "Disclaimer: This clinical decision support tool does not replace "
+        "radiologic imaging or physician diagnosis for cholangiocarcinoma."
+    )
+
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    pdf.output(temp_file.name)
+
+    return temp_file.name
+
+# ----------------------------------------------------------
+# ENHANCED REGISTRY FILTERING
+# ----------------------------------------------------------
+if page == "Patient Registry" and len(st.session_state.registry) > 0:
+
+    df_registry = pd.DataFrame(st.session_state.registry)
+
+    st.subheader("Filter by Risk Level")
+    risk_filter = st.selectbox(
+        "Select Risk Level",
+        ["All"] + list(df_registry["Risk Level"].unique())
+    )
+
+    if risk_filter != "All":
+        df_registry = df_registry[df_registry["Risk Level"] == risk_filter]
+
+    st.dataframe(df_registry, use_container_width=True)
+
+# ----------------------------------------------------------
+# ADVANCED ANALYTICS SECTION
+# ----------------------------------------------------------
+if page == "Analytics Dashboard" and len(st.session_state.registry) > 0:
+
+    df = pd.DataFrame(st.session_state.registry)
+
+    st.subheader("Frailty vs Risk Level")
+
+    fig = px.box(
+        df,
+        x="Risk Level",
+        y="Frailty Score",
+        color="Risk Level",
+        title="Frailty Score Distribution by Risk Level"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+# ----------------------------------------------------------
+# MODIFY NEW ASSESSMENT OUTPUT (Enhance Existing Button)
+# ----------------------------------------------------------
+if page == "New Assessment" and len(st.session_state.registry) > 0:
+
+    latest_record = st.session_state.registry[-1]
+
+    st.markdown("### Clinical Severity Badge")
+    st.markdown(f"## {severity_badge(latest_record['Risk Level'])}")
+
+    show_risk_explanation()
+
+    st.markdown("### Generate Professional PDF Report")
+
+    if st.button("Generate PDF Report"):
+        pdf_path = generate_pdf(latest_record)
+
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                "Download PDF Report",
+                f,
+                file_name="PASSAGE_CDS_Report.pdf",
+                mime="application/pdf"
+            )
