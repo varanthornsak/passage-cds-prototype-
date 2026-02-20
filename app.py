@@ -246,3 +246,43 @@ PASSAGE Clinical Decision Support System
 Pilot Deployment Version 1.0  
 For Clinical Evaluation Use Only
 """)
+# ==============================
+# PRODUCTION DATABASE CONFIG
+# ==============================
+from sqlalchemy import create_engine
+from cryptography.fernet import Fernet
+import base64
+
+DB_URL = "postgresql://passage_user:strongpassword@localhost:5432/passage_db"
+engine = create_engine(DB_URL)
+
+# ===== Encryption Key =====
+SECRET_KEY = os.environ.get("PASSAGE_SECRET_KEY")
+
+if not SECRET_KEY:
+    SECRET_KEY = Fernet.generate_key()
+    print("WARNING: Store this key securely:", SECRET_KEY)
+
+cipher = Fernet(SECRET_KEY)
+
+def encrypt_data(text):
+    return cipher.encrypt(str(text).encode()).decode()
+
+def decrypt_data(text):
+    return cipher.decrypt(text.encode()).decode()
+
+def save_to_postgres(row_dict):
+    encrypted_row = {
+        "patientid": encrypt_data(row_dict["PatientID"]),
+        "age": row_dict["Age"],
+        "adl": row_dict["ADL"],
+        "comorbidity": row_dict["Comorbidity"],
+        "qol": row_dict["QoL"],
+        "riskscore": row_dict["RiskScore"],
+        "riskpercent": row_dict["RiskPercent"],
+        "risklevel": row_dict["RiskLevel"],
+        "timestamp": row_dict["Timestamp"],
+        "clinician": row_dict["Clinician"]
+    }
+    df = pd.DataFrame([encrypted_row])
+    df.to_sql("patient_records", engine, if_exists="append", index=False)
