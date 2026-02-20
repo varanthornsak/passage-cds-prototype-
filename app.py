@@ -10,7 +10,7 @@ from datetime import datetime
 st.set_page_config(page_title="PASSAGE Healthspan CDS", layout="wide")
 
 # -----------------------------
-# DATABASE (ใช้ SQLite เลย ไม่ต้อง secrets)
+# DATABASE
 # -----------------------------
 DATABASE_URL = "sqlite:///health.db"
 
@@ -64,9 +64,12 @@ def calculate_confidence(data):
 # -----------------------------
 # UI
 # -----------------------------
-st.title("PASSAGE Healthspan Clinical Decision Support")
+st.title("🧠 PASSAGE Healthspan Clinical Decision Support")
 
-menu = st.sidebar.selectbox("Navigation", ["New Assessment", "Population Dashboard"])
+menu = st.sidebar.selectbox(
+    "Navigation",
+    ["New Assessment", "Population Dashboard", "User Guide"]
+)
 
 # -----------------------------
 # NEW ASSESSMENT
@@ -156,3 +159,44 @@ if menu == "Population Dashboard":
         st.metric("Average AI Confidence", round(df["Confidence"].mean(), 2))
     else:
         st.info("No data available yet.")
+
+# -----------------------------
+# USER GUIDE PAGE
+# -----------------------------
+if menu == "User Guide":
+    st.header("User Guide – Detailed Instructions")
+
+    st.markdown("""
+### Overview
+PASSAGE Healthspan CDS integrates functional, cognitive, mental health, cardiometabolic,
+and quality-of-life measures into a unified Healthspan Index.
+
+### New Assessment
+1. Enter patient name.
+2. Input functional metrics (Gait Speed, Grip Strength, TUG).
+3. Enter cognitive score (MoCA).
+4. Enter mental health scores (PHQ-9, GAD-7).
+5. Enter cardiometabolic indicators (SBP, HbA1c).
+6. Enter WHOQOL-OLD score.
+7. Confirm PDPA consent.
+8. Click Submit.
+
+### Healthspan Index
+Composite score (0–100) derived from all domains.
+Higher scores indicate better overall healthspan.
+
+### AI Confidence
+Represents percentage of completed input variables.
+Does not represent predictive certainty.
+
+### Population Dashboard
+Displays:
+- Time-series Healthspan trend
+- Population average score
+- Average confidence level
+
+### Intended Use
+This tool is designed for research, preventive screening,
+and population health analytics. It is not a replacement
+for physician clinical judgment.
+""")
