@@ -1,57 +1,30 @@
-import streamlit as st
+
+        import streamlit as st
 import pandas as pd
 import numpy as np
-import os
 import datetime
-import plotly.express as px
-import hashlib
+import os
 
-# ==============================
-# CONFIG
-# ==============================
 st.set_page_config(
-    page_title="PASSAGE Clinical Decision Support",
+    page_title="PASSAGE Health Platform",
     page_icon="🧠",
     layout="wide"
 )
 
-DATA_FILE = "patients_db.csv"
-USER_FILE = "users_db.csv"
+DATA_FILE = "passage_startup_db.csv"
 
-# ==============================
-# UTILS
-# ==============================
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def load_users():
-    if os.path.exists(USER_FILE):
-        return pd.read_csv(USER_FILE)
-    else:
-        df = pd.DataFrame({
-            "username": ["admin", "doctor1"],
-            "password": [hash_password("admin123"), hash_password("doctor123")],
-            "role": ["admin", "clinician"]
-        })
-        df.to_csv(USER_FILE, index=False)
-        return df
-
-def authenticate(username, password):
-    users = load_users()
-    hashed = hash_password(password)
-    user = users[(users.username == username) & (users.password == hashed)]
-    if not user.empty:
-        return user.iloc[0]["role"]
-    return None
-
+# ===============================
+# DATABASE
+# ===============================
 def load_data():
     if os.path.exists(DATA_FILE):
         return pd.read_csv(DATA_FILE)
     else:
         df = pd.DataFrame(columns=[
-            "PatientID","Age","ADL","Comorbidity",
-            "QoL","RiskScore","RiskPercent",
-            "RiskLevel","Timestamp","Clinician"
+            "PatientID","Age","ClinicalScore",
+            "FunctionalScore","SocialScore",
+            "TotalRiskPercent","RiskLevel",
+            "AIConfidence","Timestamp"
         ])
         df.to_csv(DATA_FILE, index=False)
         return df
@@ -59,230 +32,184 @@ def load_data():
 def save_data(df):
     df.to_csv(DATA_FILE, index=False)
 
-def logistic_probability(score):
-    prob = 1 / (1 + np.exp(-0.8*(score-5)))
-    return round(prob, 3)
+df = load_data()
 
-def calculate_risk(age, adl, comorbidity, qol):
-    score = 0
-    if age >= 70: score += 2
-    if adl <= 4: score += 3
-    if comorbidity == "Multiple": score += 3
-    if qol < 70: score += 2
-    return score
+# ===============================
+# STARTUP UI
+# ===============================
+st.markdown("""
+<style>
+.main {background-color:#f7f9fc;}
+h1,h2,h3 {color:#0f172a;}
+.metric-card {background:#ffffff;padding:20px;border-radius:15px;box-shadow:0 2px 10px rgba(0,0,0,0.05);}
+.low {color:#16a34a;font-weight:600;}
+.moderate {color:#ca8a04;font-weight:600;}
+.high {color:#dc2626;font-weight:600;}
+</style>
+""", unsafe_allow_html=True)
 
-# ==============================
-# LOGIN SYSTEM
-# ==============================
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-if not st.session_state.authenticated:
-    st.title("PASSAGE Clinical Decision Support")
-    st.subheader("Secure Login")
-
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        role = authenticate(username, password)
-        if role:
-            st.session_state.authenticated = True
-            st.session_state.role = role
-            st.session_state.username = username
-            st.success("Login successful")
-            st.rerun()
-        else:
-            st.error("Invalid credentials")
-
-    st.stop()
-
-# ==============================
-# MAIN SYSTEM
-# ==============================
-
-st.sidebar.title("PASSAGE CDS")
-st.sidebar.write(f"User: {st.session_state.username}")
-st.sidebar.write(f"Role: {st.session_state.role}")
+st.title("PASSAGE Health")
+st.caption("Digital Frailty & Hospitalization Risk Platform")
 
 menu = st.sidebar.radio("Navigation", [
-    "Patient Assessment",
+    "New Assessment",
     "Patient Registry",
     "Population Dashboard"
 ])
 
-df = load_data()
+# ===============================
+# RISK ENGINE
+# ===============================
+def logistic(x):
+    return 1 / (1 + np.exp(-x))
 
-# ==============================
-# PATIENT ASSESSMENT
-# ==============================
-if menu == "Patient Assessment":
+def calculate_risk(age, comorbidity, qol,
+                   gait_speed, frailty_score,
+                   living_alone, fall_history):
 
-    st.title("Patient Risk Assessment")
+    # Clinical Layer
+    clinical = 0
+    if age >= 75: clinical += 2
+    if comorbidity == "Multiple": clinical += 3
+    if qol < 60: clinical += 2
 
-    col1, col2 = st.columns(2)
+    # Functional Layer
+    functional = 0
+    if gait_speed < 0.8: functional += 2
+    if frailty_score >= 3: functional += 3
+
+    # Social Layer
+    social = 0
+    if living_alone: social += 1
+    if fall_history: social += 2
+
+    total_raw = clinical + functional + social
+    probability = logistic((total_raw - 4) * 0.9)
+
+    confidence = min(0.95, 0.6 + (total_raw * 0.03))
+
+    return clinical, functional, social, probability, confidence
+
+# ===============================
+# NEW ASSESSMENT
+# ===============================
+if menu == "New Assessment":
+
+    st.header("New Patient Assessment")
+
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         patient_id = st.text_input("Patient ID")
-        age = st.number_input("Age", 40, 100, 65)
-        adl = st.slider("ADL Score (0-6)", 0, 6, 5)
-
-    with col2:
+        age = st.number_input("Age", 40, 100, 70)
         comorbidity = st.selectbox("Comorbidity",
                                    ["None","Single","Multiple"])
-        qol = st.slider("Quality of Life (0-100)", 0, 100, 75)
+        qol = st.slider("Quality of Life (0-100)",0,100,70)
 
-    if st.button("Calculate Risk"):
+    with col2:
+        gait_speed = st.number_input("Gait Speed (m/s)",0.1,2.0,1.0)
+        frailty_score = st.slider("Frailty Phenotype (0-5)",0,5,1)
+
+    with col3:
+        living_alone = st.checkbox("Living Alone")
+        fall_history = st.checkbox("Fall in past 12 months")
+
+    if st.button("Generate Risk Profile"):
 
         if patient_id == "":
-            st.warning("Please enter Patient ID")
+            st.warning("Enter Patient ID")
         else:
-            score = calculate_risk(age, adl, comorbidity, qol)
-            probability = logistic_probability(score)
 
-            if probability < 0.2:
+            clinical, functional, social, risk, confidence = calculate_risk(
+                age, comorbidity, qol,
+                gait_speed, frailty_score,
+                living_alone, fall_history
+            )
+
+            if risk < 0.2:
                 level = "Low"
-            elif probability < 0.5:
+                css = "low"
+            elif risk < 0.5:
                 level = "Moderate"
+                css = "moderate"
             else:
                 level = "High"
+                css = "high"
 
-            st.subheader("Prediction Result")
-            st.metric("Hospitalization Risk", f"{probability*100:.1f}%")
-            st.progress(probability)
-            st.write("Risk Level:", level)
+            st.markdown("---")
+            st.subheader("Risk Overview")
 
-            st.subheader("Risk Explanation")
-            explanations = []
-            if age >= 70:
-                explanations.append("Advanced age increases frailty risk.")
-            if adl <= 4:
-                explanations.append("Reduced functional status detected.")
-            if comorbidity == "Multiple":
-                explanations.append("Multiple comorbidities present.")
-            if qol < 70:
-                explanations.append("Lower quality of life reported.")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Clinical Score", clinical)
+            c2.metric("Functional Score", functional)
+            c3.metric("Social Score", social)
+            c4.metric("Total Risk", f"{risk*100:.1f}%")
 
-            for e in explanations:
-                st.write("•", e)
+            st.progress(risk)
+            st.markdown(f"<p class='{css}'>Risk Level: {level}</p>",
+                        unsafe_allow_html=True)
 
+            st.subheader("AI Confidence")
+            st.metric("Model Confidence", f"{confidence*100:.1f}%")
+            st.progress(confidence)
+
+            # Save
             new_row = pd.DataFrame([{
                 "PatientID": patient_id,
                 "Age": age,
-                "ADL": adl,
-                "Comorbidity": comorbidity,
-                "QoL": qol,
-                "RiskScore": score,
-                "RiskPercent": probability*100,
+                "ClinicalScore": clinical,
+                "FunctionalScore": functional,
+                "SocialScore": social,
+                "TotalRiskPercent": risk*100,
                 "RiskLevel": level,
-                "Timestamp": datetime.datetime.now(),
-                "Clinician": st.session_state.username
+                "AIConfidence": confidence*100,
+                "Timestamp": datetime.datetime.now()
             }])
 
             df = pd.concat([df, new_row], ignore_index=True)
             save_data(df)
 
-            st.success("Assessment saved to system")
+            st.success("Assessment saved successfully")
 
-# ==============================
+# ===============================
 # PATIENT REGISTRY
-# ==============================
+# ===============================
 elif menu == "Patient Registry":
 
-    st.title("Patient Registry")
+    st.header("Patient Registry")
 
     if df.empty:
-        st.info("No patient data available.")
+        st.info("No data available")
     else:
-        selected_id = st.selectbox("Select Patient ID",
-                                   df["PatientID"].unique())
+        selected = st.selectbox("Select Patient",
+                                df["PatientID"].unique())
+        patient_df = df[df["PatientID"] == selected]
+        st.dataframe(patient_df.sort_values("Timestamp"))
 
-        patient_data = df[df["PatientID"] == selected_id]
+        st.line_chart(patient_df.set_index("Timestamp")["TotalRiskPercent"])
 
-        st.dataframe(patient_data.sort_values("Timestamp"))
-
-        st.subheader("Risk Trend")
-        fig = px.line(patient_data,
-                      x="Timestamp",
-                      y="RiskPercent",
-                      markers=True)
-        st.plotly_chart(fig, use_container_width=True)
-
-# ==============================
+# ===============================
 # POPULATION DASHBOARD
-# ==============================
+# ===============================
 elif menu == "Population Dashboard":
 
-    st.title("Population Health Dashboard")
+    st.header("Population Health Insights")
 
     if df.empty:
-        st.info("No data available.")
+        st.info("No data available")
     else:
-
         col1, col2, col3 = st.columns(3)
-
         col1.metric("Total Patients", df["PatientID"].nunique())
-        col2.metric("Total Assessments", len(df))
+        col2.metric("Avg Risk %",
+                    round(df["TotalRiskPercent"].mean(),1))
         col3.metric("High Risk %",
-                    f"{(df['RiskLevel']=='High').mean()*100:.1f}%")
+                    round((df["RiskLevel"]=="High").mean()*100,1))
 
         st.subheader("Risk Distribution")
-        fig1 = px.histogram(df, x="RiskLevel")
-        st.plotly_chart(fig1, use_container_width=True)
+        st.bar_chart(df["RiskLevel"].value_counts())
 
-        st.subheader("Average Risk by Age")
-        fig2 = px.scatter(df,
-                          x="Age",
-                          y="RiskPercent",
-                          trendline="ols")
-        st.plotly_chart(fig2, use_container_width=True)
+        st.subheader("Risk vs Age")
+        st.scatter_chart(df[["Age","TotalRiskPercent"]])
 
-# ==============================
-# FOOTER
-# ==============================
 st.markdown("---")
-st.caption("""
-PASSAGE Clinical Decision Support System  
-Pilot Deployment Version 1.0  
-For Clinical Evaluation Use Only
-""")
-# ==============================
-# PRODUCTION DATABASE CONFIG
-# ==============================
-from sqlalchemy import create_engine
-from cryptography.fernet import Fernet
-import base64
-
-DB_URL = "postgresql://passage_user:strongpassword@localhost:5432/passage_db"
-engine = create_engine(DB_URL)
-
-# ===== Encryption Key =====
-SECRET_KEY = os.environ.get("PASSAGE_SECRET_KEY")
-
-if not SECRET_KEY:
-    SECRET_KEY = Fernet.generate_key()
-    print("WARNING: Store this key securely:", SECRET_KEY)
-
-cipher = Fernet(SECRET_KEY)
-
-def encrypt_data(text):
-    return cipher.encrypt(str(text).encode()).decode()
-
-def decrypt_data(text):
-    return cipher.decrypt(text.encode()).decode()
-
-def save_to_postgres(row_dict):
-    encrypted_row = {
-        "patientid": encrypt_data(row_dict["PatientID"]),
-        "age": row_dict["Age"],
-        "adl": row_dict["ADL"],
-        "comorbidity": row_dict["Comorbidity"],
-        "qol": row_dict["QoL"],
-        "riskscore": row_dict["RiskScore"],
-        "riskpercent": row_dict["RiskPercent"],
-        "risklevel": row_dict["RiskLevel"],
-        "timestamp": row_dict["Timestamp"],
-        "clinician": row_dict["Clinician"]
-    }
-    df = pd.DataFrame([encrypted_row])
-    df.to_sql("patient_records", engine, if_exists="append", index=False)
+st.caption("PASSAGE Health | Digital Health Risk Intelligence Platform")
