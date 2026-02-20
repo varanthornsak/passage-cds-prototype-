@@ -2,9 +2,59 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# -------------------
-# User Database
-# -------------------
+st.set_page_config(
+    page_title="PASSAGE Health",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ==============================
+# Branding + Custom UI
+# ==============================
+st.markdown("""
+<style>
+.main {
+    background-color: #f8fafc;
+}
+h1, h2, h3 {
+    color: #0F172A;
+}
+.metric-card {
+    background-color: white;
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+}
+.risk-low {
+    background-color: #DCFCE7;
+    padding: 15px;
+    border-radius: 12px;
+    font-weight: 600;
+}
+.risk-moderate {
+    background-color: #FEF3C7;
+    padding: 15px;
+    border-radius: 12px;
+    font-weight: 600;
+}
+.risk-high {
+    background-color: #FEE2E2;
+    padding: 15px;
+    border-radius: 12px;
+    font-weight: 600;
+}
+.footer {
+    text-align: center;
+    color: gray;
+    font-size: 12px;
+    padding-top: 40px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ==============================
+# Mock Login System
+# ==============================
 users = {
     "doctor": {"password": "1234", "role": "Doctor"},
     "nurse": {"password": "1234", "role": "Nurse"},
@@ -12,7 +62,8 @@ users = {
 }
 
 def login():
-    st.title("PASSAGE-CDS Login")
+    st.title("PASSAGE Health")
+    st.subheader("Login to Clinical Dashboard")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
@@ -30,97 +81,28 @@ if not st.session_state["logged_in"]:
     login()
     st.stop()
 
-st.set_page_config(
-    page_title="PASSAGE-CDS",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-if "patients" not in st.session_state:
-    st.session_state["patients"] = []
-
-if st.button("Save Patient"):
-    st.session_state["patients"].append({
-        "Age": age,
-        "Risk Score": score,
-        "Risk Level": level
-    })
-
-st.subheader("Patient List")
-
-if st.session_state["patients"]:
-    df_patients = pd.DataFrame(st.session_state["patients"])
-    st.dataframe(df_patients)
-# -------------------------------
-# Custom CSS (Startup Style)
-# -------------------------------
-st.markdown("""
-<style>
-.main {
-    background-color: #f8fafc;
-}
-.block-container {
-    padding-top: 2rem;
-}
-h1 {
-    color: #0f172a;
-}
-.metric-card {
-    background-color: white;
-    padding: 20px;
-    border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-}
-.risk-low {
-    background-color: #dcfce7;
-    padding: 15px;
-    border-radius: 12px;
-    font-weight: 600;
-}
-.risk-moderate {
-    background-color: #fef3c7;
-    padding: 15px;
-    border-radius: 12px;
-    font-weight: 600;
-}
-.risk-high {
-    background-color: #fee2e2;
-    padding: 15px;
-    border-radius: 12px;
-    font-weight: 600;
-}
-.footer {
-    text-align: center;
-    color: gray;
-    font-size: 12px;
-    padding-top: 30px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# -------------------------------
-# Header
-# -------------------------------
-st.title("PASSAGE-CDS")
-st.caption("Personalized Aging Risk Intelligence Platform")
-
-st.markdown("---")
-
-# -------------------------------
+# ==============================
 # Sidebar
-# -------------------------------
-st.sidebar.title("Platform Overview")
+# ==============================
+st.sidebar.title("PASSAGE Health")
+st.sidebar.write(f"Role: {st.session_state['role']}")
 st.sidebar.info("""
-PASSAGE-CDS v1.0  
-Clinical Decision Support Platform  
+Personalized Adaptive Screening  
+System for Geriatric Evaluation  
 
-Built for Community Hospitals  
 Startup Prototype Version
 """)
 
-# -------------------------------
-# Input Section
-# -------------------------------
-st.subheader("Patient Input")
+# ==============================
+# Main Header
+# ==============================
+st.title("Clinical Decision Support Dashboard")
+st.caption("Aging Risk Intelligence Platform")
+
+# ==============================
+# Patient Input
+# ==============================
+st.header("Patient Assessment")
 
 col1, col2, col3 = st.columns(3)
 
@@ -136,11 +118,9 @@ with col3:
     comorbidity = st.selectbox("Comorbidity", ["None", "1 Disease", "≥2 Diseases"])
     exercise = st.selectbox("Exercise", ["≥3 times/week", "1-2 times/week", "None"])
 
-st.markdown("---")
-
-# -------------------------------
+# ==============================
 # Risk Engine
-# -------------------------------
+# ==============================
 score = 0
 
 if age >= 80:
@@ -184,39 +164,39 @@ else:
     level = "High Risk"
     risk_class = "risk-high"
 
-# -------------------------------
-# Dashboard KPI
-# -------------------------------
-st.subheader("Risk Dashboard")
+confidence = np.random.uniform(0.80, 0.95)
+
+# ==============================
+# Dashboard Metrics
+# ==============================
+st.markdown("---")
+st.header("Risk Overview")
 
 k1, k2, k3 = st.columns(3)
 
 with k1:
-    st.metric("Total Risk Score", score)
+    st.metric("Risk Score", score)
 
 with k2:
-    st.metric("Frailty Indicator", "Stable" if score <= 3 else "Monitor")
+    st.metric("Risk Level", level)
 
 with k3:
-    st.metric("Hospitalization Risk", level)
+    st.metric("AI Confidence", f"{round(confidence*100,1)}%")
 
-st.markdown("---")
+st.progress(confidence)
 
-# -------------------------------
-# Risk Display Card
-# -------------------------------
 st.markdown(f'<div class="{risk_class}">{level}</div>', unsafe_allow_html=True)
 
-# -------------------------------
-# Recommendation Section
-# -------------------------------
-st.subheader("Clinical Recommendation")
+# ==============================
+# Recommendation
+# ==============================
+st.header("Clinical Recommendation")
 
 if level == "Low Risk":
     st.success("""
 • Annual screening  
 • Maintain physical activity  
-• Balanced nutrition  
+• Balanced diet  
 """)
 
 elif level == "Moderate Risk":
@@ -224,48 +204,38 @@ elif level == "Moderate Risk":
 • Follow-up in 3–6 months  
 • Frailty assessment  
 • Medication review  
-• Nutrition counseling  
 """)
 
 else:
     st.error("""
 • Refer to Geriatric Clinic  
 • Comprehensive Geriatric Assessment  
-• Fall risk evaluation  
 • Close monitoring  
 """)
 
+# ==============================
+# Multi-Patient Mode
+# ==============================
+if "patients" not in st.session_state:
+    st.session_state["patients"] = []
+
+if st.button("Save Patient Case"):
+    st.session_state["patients"].append({
+        "Age": age,
+        "Risk Score": score,
+        "Risk Level": level
+    })
+
 st.markdown("---")
+st.header("Patient Registry")
 
-# -------------------------------
-# Visualization
-# -------------------------------
-st.subheader("Risk Factor Contribution")
+if st.session_state["patients"]:
+    df_patients = pd.DataFrame(st.session_state["patients"])
+    st.dataframe(df_patients)
 
-risk_data = {
-    "Factor": ["Age", "ADL", "BMI", "Comorbidity", "Exercise", "QoL"],
-    "Score": [
-        3 if age >= 80 else 2 if age >= 70 else 1 if age >= 60 else 0,
-        3 if adl <= 3 else 2 if adl <= 4 else 0,
-        1 if bmi < 18.5 or bmi >= 30 else 0,
-        2 if comorbidity == "≥2 Diseases" else 1 if comorbidity == "1 Disease" else 0,
-        2 if exercise == "None" else 1 if exercise == "1-2 times/week" else 0,
-        2 if qol < 50 else 1 if qol < 70 else 0
-    ]
-}
-
-df = pd.DataFrame(risk_data)
-st.bar_chart(df.set_index("Factor"))
-
-# -------------------------------
-# Footer
-# -------------------------------
-st.markdown("""
-<div class="footer">
-PASSAGE-CDS © 2026 | HealthTech Startup Prototype  
-Not for real clinical use
-</div>
-""", unsafe_allow_html=True)
+# ==============================
+# Population Dashboard
+# ==============================
 st.markdown("---")
 st.header("Population Analytics")
 
@@ -273,9 +243,19 @@ if st.session_state["patients"]:
     df_pop = pd.DataFrame(st.session_state["patients"])
 
     risk_counts = df_pop["Risk Level"].value_counts()
-
     st.subheader("Risk Distribution")
     st.bar_chart(risk_counts)
 
     avg_score = df_pop["Risk Score"].mean()
-    st.metric("Average Risk Score", round(avg_score, 2))
+    st.metric("Average Population Risk Score", round(avg_score, 2))
+
+# ==============================
+# Footer
+# ==============================
+st.markdown("""
+<div class="footer">
+PASSAGE Health © 2026  
+Clinical Decision Support Startup Prototype  
+Not for real clinical use
+</div>
+""", unsafe_allow_html=True)
