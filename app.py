@@ -275,7 +275,7 @@ def generate_pdf(record):
 # ----------------------------------------------------------
 # ENHANCED REGISTRY FILTERING
 # ----------------------------------------------------------
-if page == "Patient Registry" and len(st.session_state.registry) > 0:
+if "registry" in st.session_state and len(st.session_state.registry) > 0:
 
     df_registry = pd.DataFrame(st.session_state.registry)
 
