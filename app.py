@@ -2,12 +2,54 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+# -------------------
+# User Database
+# -------------------
+users = {
+    "doctor": {"password": "1234", "role": "Doctor"},
+    "nurse": {"password": "1234", "role": "Nurse"},
+    "admin": {"password": "1234", "role": "Admin"},
+}
+
+def login():
+    st.title("PASSAGE-CDS Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if username in users and users[username]["password"] == password:
+            st.session_state["logged_in"] = True
+            st.session_state["role"] = users[username]["role"]
+        else:
+            st.error("Invalid credentials")
+
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+if not st.session_state["logged_in"]:
+    login()
+    st.stop()
+
 st.set_page_config(
     page_title="PASSAGE-CDS",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+if "patients" not in st.session_state:
+    st.session_state["patients"] = []
 
+if st.button("Save Patient"):
+    st.session_state["patients"].append({
+        "Age": age,
+        "Risk Score": score,
+        "Risk Level": level
+    })
+
+st.subheader("Patient List")
+
+if st.session_state["patients"]:
+    df_patients = pd.DataFrame(st.session_state["patients"])
+    st.dataframe(df_patients)
 # -------------------------------
 # Custom CSS (Startup Style)
 # -------------------------------
@@ -224,3 +266,16 @@ PASSAGE-CDS © 2026 | HealthTech Startup Prototype
 Not for real clinical use
 </div>
 """, unsafe_allow_html=True)
+st.markdown("---")
+st.header("Population Analytics")
+
+if st.session_state["patients"]:
+    df_pop = pd.DataFrame(st.session_state["patients"])
+
+    risk_counts = df_pop["Risk Level"].value_counts()
+
+    st.subheader("Risk Distribution")
+    st.bar_chart(risk_counts)
+
+    avg_score = df_pop["Risk Score"].mean()
+    st.metric("Average Risk Score", round(avg_score, 2))
