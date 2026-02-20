@@ -1,8 +1,9 @@
 streamlit
 pandas
 numpy
-scikit-learn
 plotly
-psycopg2-binary 
-sqlalchemy 
+statsmodels
+sqlalchemy
+psycopg2-binary
 cryptography
+scikit-learn
