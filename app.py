@@ -1,272 +1,248 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 import datetime
+import plotly.express as px
+import hashlib
 
+# ==============================
+# CONFIG
+# ==============================
 st.set_page_config(
-    page_title="PASSAGE Health Clinical Platform",
+    page_title="PASSAGE Clinical Decision Support",
+    page_icon="🧠",
     layout="wide"
 )
 
-# ===============================
-# Custom Enterprise UI
-# ===============================
-st.markdown("""
-<style>
-.main {background-color: #f4f6f9;}
-h1,h2,h3 {color:#0F172A;}
-.risk-low {background:#DCFCE7;padding:15px;border-radius:12px;font-weight:600;}
-.risk-moderate {background:#FEF3C7;padding:15px;border-radius:12px;font-weight:600;}
-.risk-high {background:#FEE2E2;padding:15px;border-radius:12px;font-weight:600;}
-.footer {text-align:center;color:gray;font-size:12px;padding-top:40px;}
-</style>
-""", unsafe_allow_html=True)
+DATA_FILE = "patients_db.csv"
+USER_FILE = "users_db.csv"
 
-# ===============================
-# Mock Login System
-# ===============================
-users = {
-    "doctor": {"password": "1234", "role": "Doctor"},
-    "nurse": {"password": "1234", "role": "Nurse"},
-    "admin": {"password": "1234", "role": "Administrator"},
-}
+# ==============================
+# UTILS
+# ==============================
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-def login():
-    st.title("PASSAGE Health Clinical Platform")
-    st.subheader("Secure Login – Pilot Deployment Version")
+def load_users():
+    if os.path.exists(USER_FILE):
+        return pd.read_csv(USER_FILE)
+    else:
+        df = pd.DataFrame({
+            "username": ["admin", "doctor1"],
+            "password": [hash_password("admin123"), hash_password("doctor123")],
+            "role": ["admin", "clinician"]
+        })
+        df.to_csv(USER_FILE, index=False)
+        return df
+
+def authenticate(username, password):
+    users = load_users()
+    hashed = hash_password(password)
+    user = users[(users.username == username) & (users.password == hashed)]
+    if not user.empty:
+        return user.iloc[0]["role"]
+    return None
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        return pd.read_csv(DATA_FILE)
+    else:
+        df = pd.DataFrame(columns=[
+            "PatientID","Age","ADL","Comorbidity",
+            "QoL","RiskScore","RiskPercent",
+            "RiskLevel","Timestamp","Clinician"
+        ])
+        df.to_csv(DATA_FILE, index=False)
+        return df
+
+def save_data(df):
+    df.to_csv(DATA_FILE, index=False)
+
+def logistic_probability(score):
+    prob = 1 / (1 + np.exp(-0.8*(score-5)))
+    return round(prob, 3)
+
+def calculate_risk(age, adl, comorbidity, qol):
+    score = 0
+    if age >= 70: score += 2
+    if adl <= 4: score += 3
+    if comorbidity == "Multiple": score += 3
+    if qol < 70: score += 2
+    return score
+
+# ==============================
+# LOGIN SYSTEM
+# ==============================
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.title("PASSAGE Clinical Decision Support")
+    st.subheader("Secure Login")
+
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        if username in users and users[username]["password"] == password:
-            st.session_state["logged_in"] = True
-            st.session_state["role"] = users[username]["role"]
+        role = authenticate(username, password)
+        if role:
+            st.session_state.authenticated = True
+            st.session_state.role = role
+            st.session_state.username = username
+            st.success("Login successful")
+            st.rerun()
         else:
             st.error("Invalid credentials")
 
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-
-if not st.session_state["logged_in"]:
-    login()
     st.stop()
 
-# ===============================
-# Sidebar
-# ===============================
-st.sidebar.title("PASSAGE Health")
-st.sidebar.write(f"Role: {st.session_state['role']}")
-st.sidebar.markdown("""
-Clinical Decision Support – Aging Risk Stratification  
-Pilot Implementation Phase
-""")
-st.sidebar.markdown("### Risk Interpretation")
-st.sidebar.write("""
-Low Risk: <20%  
-Moderate Risk: 20–50%  
-High Risk: >50%
-""")
+# ==============================
+# MAIN SYSTEM
+# ==============================
 
-# ===============================
-# Main Header
-# ===============================
-st.title("Clinical Decision Support Dashboard")
-st.caption("Longitudinal Aging Risk Monitoring System")
+st.sidebar.title("PASSAGE CDS")
+st.sidebar.write(f"User: {st.session_state.username}")
+st.sidebar.write(f"Role: {st.session_state.role}")
 
-# ===============================
-# Patient Input
-# ===============================
-st.header("Patient Assessment")
+menu = st.sidebar.radio("Navigation", [
+    "Patient Assessment",
+    "Patient Registry",
+    "Population Dashboard"
+])
 
-patient_id = st.text_input("Patient ID")
+df = load_data()
 
-col1, col2, col3 = st.columns(3)
+# ==============================
+# PATIENT ASSESSMENT
+# ==============================
+if menu == "Patient Assessment":
 
-with col1:
-    age = st.number_input("Age", 40, 100, 65)
-    bmi = st.number_input("BMI", 10.0, 45.0, 23.0)
+    st.title("Patient Risk Assessment")
 
-with col2:
-    adl = st.slider("ADL Score (0-6)", 0, 6, 6)
-    qol = st.slider("Quality of Life (0-100)", 0, 100, 70)
+    col1, col2 = st.columns(2)
 
-with col3:
-    comorbidity = st.selectbox("Comorbidity", ["None", "1 Disease", "≥2 Diseases"])
-    exercise = st.selectbox("Exercise Frequency", ["≥3 times/week", "1-2 times/week", "None"])
+    with col1:
+        patient_id = st.text_input("Patient ID")
+        age = st.number_input("Age", 40, 100, 65)
+        adl = st.slider("ADL Score (0-6)", 0, 6, 5)
 
-# ===============================
-# Risk Engine (Rule-based Score)
-# ===============================
-score = 0
+    with col2:
+        comorbidity = st.selectbox("Comorbidity",
+                                   ["None","Single","Multiple"])
+        qol = st.slider("Quality of Life (0-100)", 0, 100, 75)
 
-if age >= 80:
-    score += 3
-elif age >= 70:
-    score += 2
-elif age >= 60:
-    score += 1
+    if st.button("Calculate Risk"):
 
-if adl <= 3:
-    score += 3
-elif adl <= 4:
-    score += 2
+        if patient_id == "":
+            st.warning("Please enter Patient ID")
+        else:
+            score = calculate_risk(age, adl, comorbidity, qol)
+            probability = logistic_probability(score)
 
-if bmi < 18.5 or bmi >= 30:
-    score += 1
+            if probability < 0.2:
+                level = "Low"
+            elif probability < 0.5:
+                level = "Moderate"
+            else:
+                level = "High"
 
-if comorbidity == "1 Disease":
-    score += 1
-elif comorbidity == "≥2 Diseases":
-    score += 2
+            st.subheader("Prediction Result")
+            st.metric("Hospitalization Risk", f"{probability*100:.1f}%")
+            st.progress(probability)
+            st.write("Risk Level:", level)
 
-if exercise == "None":
-    score += 2
-elif exercise == "1-2 times/week":
-    score += 1
+            st.subheader("Risk Explanation")
+            explanations = []
+            if age >= 70:
+                explanations.append("Advanced age increases frailty risk.")
+            if adl <= 4:
+                explanations.append("Reduced functional status detected.")
+            if comorbidity == "Multiple":
+                explanations.append("Multiple comorbidities present.")
+            if qol < 70:
+                explanations.append("Lower quality of life reported.")
 
-if qol < 50:
-    score += 2
-elif qol < 70:
-    score += 1
+            for e in explanations:
+                st.write("•", e)
 
-# ===============================
-# Logistic Probability Model
-# ===============================
-def logistic_probability(score):
-    return 1 / (1 + np.exp(-0.8*(score-5)))
+            new_row = pd.DataFrame([{
+                "PatientID": patient_id,
+                "Age": age,
+                "ADL": adl,
+                "Comorbidity": comorbidity,
+                "QoL": qol,
+                "RiskScore": score,
+                "RiskPercent": probability*100,
+                "RiskLevel": level,
+                "Timestamp": datetime.datetime.now(),
+                "Clinician": st.session_state.username
+            }])
 
-probability = logistic_probability(score)
+            df = pd.concat([df, new_row], ignore_index=True)
+            save_data(df)
 
-if probability < 0.2:
-    level = "Low Risk"
-    risk_class = "risk-low"
-elif probability < 0.5:
-    level = "Moderate Risk"
-    risk_class = "risk-moderate"
-else:
-    level = "High Risk"
-    risk_class = "risk-high"
+            st.success("Assessment saved to system")
 
-# ===============================
-# Dashboard Metrics
-# ===============================
+# ==============================
+# PATIENT REGISTRY
+# ==============================
+elif menu == "Patient Registry":
+
+    st.title("Patient Registry")
+
+    if df.empty:
+        st.info("No patient data available.")
+    else:
+        selected_id = st.selectbox("Select Patient ID",
+                                   df["PatientID"].unique())
+
+        patient_data = df[df["PatientID"] == selected_id]
+
+        st.dataframe(patient_data.sort_values("Timestamp"))
+
+        st.subheader("Risk Trend")
+        fig = px.line(patient_data,
+                      x="Timestamp",
+                      y="RiskPercent",
+                      markers=True)
+        st.plotly_chart(fig, use_container_width=True)
+
+# ==============================
+# POPULATION DASHBOARD
+# ==============================
+elif menu == "Population Dashboard":
+
+    st.title("Population Health Dashboard")
+
+    if df.empty:
+        st.info("No data available.")
+    else:
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("Total Patients", df["PatientID"].nunique())
+        col2.metric("Total Assessments", len(df))
+        col3.metric("High Risk %",
+                    f"{(df['RiskLevel']=='High').mean()*100:.1f}%")
+
+        st.subheader("Risk Distribution")
+        fig1 = px.histogram(df, x="RiskLevel")
+        st.plotly_chart(fig1, use_container_width=True)
+
+        st.subheader("Average Risk by Age")
+        fig2 = px.scatter(df,
+                          x="Age",
+                          y="RiskPercent",
+                          trendline="ols")
+        st.plotly_chart(fig2, use_container_width=True)
+
+# ==============================
+# FOOTER
+# ==============================
 st.markdown("---")
-st.header("Risk Overview")
-
-k1, k2, k3 = st.columns(3)
-
-with k1:
-    st.metric("Risk Score", score)
-
-with k2:
-    st.metric("Predicted Hospitalization Risk", f"{probability*100:.1f}%")
-
-with k3:
-    st.metric("Risk Category", level)
-
-st.progress(probability)
-st.markdown(f'<div class="{risk_class}">{level}</div>', unsafe_allow_html=True)
-
-# ===============================
-# Explainable AI
-# ===============================
-st.header("Risk Explanation")
-
-explanation = []
-
-if age >= 70:
-    explanation.append("Advanced age increases frailty-related hospitalization risk.")
-if adl <= 4:
-    explanation.append("Reduced functional capacity contributes significantly to risk.")
-if comorbidity != "None":
-    explanation.append("Presence of comorbid conditions elevates risk profile.")
-if qol < 70:
-    explanation.append("Lower quality of life associated with adverse outcomes.")
-if exercise == "None":
-    explanation.append("Physical inactivity linked to higher geriatric risk.")
-
-for e in explanation:
-    st.write("•", e)
-
-# ===============================
-# Clinical Recommendation
-# ===============================
-st.header("Clinical Recommendation")
-
-if level == "Low Risk":
-    st.success("""
-• Annual screening  
-• Encourage physical activity  
-• Preventive lifestyle counseling  
-""")
-
-elif level == "Moderate Risk":
-    st.warning("""
-• Follow-up within 3–6 months  
-• Formal frailty assessment  
-• Medication review  
-""")
-
-else:
-    st.error("""
-• Refer to Geriatric Clinic  
-• Comprehensive Geriatric Assessment  
-• Close monitoring and intervention planning  
-""")
-
-# ===============================
-# Multi-Patient Registry
-# ===============================
-if "patients" not in st.session_state:
-    st.session_state["patients"] = []
-
-if st.button("Save Assessment"):
-    if patient_id != "":
-        st.session_state["patients"].append({
-            "Patient ID": patient_id,
-            "Timestamp": datetime.datetime.now(),
-            "Risk Score": score,
-            "Risk %": probability*100,
-            "Risk Level": level
-        })
-
-st.markdown("---")
-st.header("Patient Registry")
-
-if st.session_state["patients"]:
-    df_patients = pd.DataFrame(st.session_state["patients"])
-    st.dataframe(df_patients)
-
-    # ===============================
-    # Longitudinal Trend
-    # ===============================
-    st.header("Longitudinal Risk Trend")
-    selected_id = st.selectbox("Select Patient ID", df_patients["Patient ID"].unique())
-    df_selected = df_patients[df_patients["Patient ID"] == selected_id]
-    st.line_chart(df_selected.set_index("Timestamp")["Risk %"])
-
-# ===============================
-# Population Analytics
-# ===============================
-st.markdown("---")
-st.header("Population Analytics")
-
-if st.session_state["patients"]:
-    df_pop = pd.DataFrame(st.session_state["patients"])
-    risk_counts = df_pop["Risk Level"].value_counts()
-    st.subheader("Risk Distribution")
-    st.bar_chart(risk_counts)
-
-    avg_score = df_pop["Risk %"].mean()
-    st.metric("Average Population Risk (%)", round(avg_score, 2))
-
-# ===============================
-# Footer
-# ===============================
-st.markdown("""
-<div class="footer">
-PASSAGE Health Clinical Platform © 2026  
+st.caption("""
+PASSAGE Clinical Decision Support System  
 Pilot Deployment Version 1.0  
-For Evaluation Use Only – Not for Independent Clinical Decision Making
-</div>
-""", unsafe_allow_html=True)
+For Clinical Evaluation Use Only
+""")
