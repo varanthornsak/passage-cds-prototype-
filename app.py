@@ -201,8 +201,8 @@ and population health analytics. It is not a replacement
 for physician clinical judgment.
 """)
 # ==========================================================
-# PROFESSIONAL UPGRADE MODULE
-# Paste below your existing code
+# PROFESSIONAL HEALTHSPAN UPGRADE MODULE
+# Compatible with existing SQLAlchemy database
 # ==========================================================
 
 import plotly.express as px
@@ -210,126 +210,84 @@ from fpdf import FPDF
 import tempfile
 
 # ----------------------------------------------------------
-# Severity Badge Function
+# Healthspan Classification
 # ----------------------------------------------------------
-def severity_badge(risk_level):
-    if risk_level == "High Risk":
-        return "🔴 HIGH RISK"
-    elif risk_level == "Moderate Risk":
-        return "🟠 MODERATE RISK"
+def classify_healthspan(score):
+    if score >= 80:
+        return "Optimal"
+    elif score >= 60:
+        return "Stable"
+    elif score >= 40:
+        return "Vulnerable"
     else:
-        return "🟢 LOW RISK"
+        return "High Risk"
 
 # ----------------------------------------------------------
-# Risk Transparency Panel
+# Add Classification to Dashboard
 # ----------------------------------------------------------
-def show_risk_explanation():
-    with st.expander("View Risk Scoring Criteria"):
-        st.markdown("""
-        **Scoring Framework**
-        - Age ≥ 40 → +1
-        - Raw Fish Consumption → +2
-        - Abnormal LFT → +2
-        - ≥2 Red Flag Symptoms → +3
-        - Frailty Indicators ≥2 → +1
-        
-        Risk Classification:
-        - 0–2 → Low Risk
-        - 3–5 → Moderate Risk
-        - ≥6 → High Risk
-        """)
+if menu == "Population Dashboard":
 
-# ----------------------------------------------------------
-# Generate Professional PDF Report
-# ----------------------------------------------------------
-def generate_pdf(record):
+    records = session.query(Assessment).all()
 
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
+    if records:
+        df = pd.DataFrame([{
+            "Healthspan": r.healthspan_index,
+            "Confidence": r.ai_confidence,
+            "Date": r.created_at,
+            "Category": classify_healthspan(r.healthspan_index)
+        } for r in records])
 
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "PASSAGE-CDS Assessment Report", ln=True)
+        st.subheader("Healthspan Category Distribution")
+        st.bar_chart(df["Category"].value_counts())
 
-    pdf.set_font("Arial", "", 12)
-    pdf.cell(0, 10, f"Patient ID: {record['Patient ID']}", ln=True)
-    pdf.cell(0, 10, f"Date: {record['Timestamp']}", ln=True)
-    pdf.cell(0, 10, f"Risk Level: {record['Risk Level']}", ln=True)
-
-    pdf.ln(10)
-
-    for key, value in record.items():
-        pdf.cell(0, 8, f"{key}: {value}", ln=True)
-
-    pdf.ln(10)
-    pdf.multi_cell(0, 8,
-        "Disclaimer: This clinical decision support tool does not replace "
-        "radiologic imaging or physician diagnosis for cholangiocarcinoma."
-    )
-
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-    pdf.output(temp_file.name)
-
-    return temp_file.name
+        st.subheader("Frailty vs Healthspan")
+        fig = px.scatter(
+            df,
+            x="Confidence",
+            y="Healthspan",
+            color="Category",
+            title="AI Confidence vs Healthspan Index"
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
 # ----------------------------------------------------------
-# ENHANCED REGISTRY FILTERING
+# PDF Report for Latest Record
 # ----------------------------------------------------------
-if "registry" in st.session_state and len(st.session_state.registry) > 0:
+if menu == "New Assessment":
 
-    df_registry = pd.DataFrame(st.session_state.registry)
+    last_record = session.query(Assessment).order_by(Assessment.id.desc()).first()
 
-    st.subheader("Filter by Risk Level")
-    risk_filter = st.selectbox(
-        "Select Risk Level",
-        ["All"] + list(df_registry["Risk Level"].unique())
-    )
+    if last_record:
 
-    if risk_filter != "All":
-        df_registry = df_registry[df_registry["Risk Level"] == risk_filter]
+        st.markdown("### Generate Professional PDF Report")
 
-    st.dataframe(df_registry, use_container_width=True)
+        if st.button("Download Latest Report (PDF)"):
 
-# ----------------------------------------------------------
-# ADVANCED ANALYTICS SECTION
-# ----------------------------------------------------------
-if page == "Analytics Dashboard" and len(st.session_state.registry) > 0:
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 16)
+            pdf.cell(0, 10, "PASSAGE Healthspan Clinical Report", ln=True)
 
-    df = pd.DataFrame(st.session_state.registry)
+            pdf.set_font("Arial", "", 12)
+            pdf.cell(0, 10, f"Patient: {last_record.patient_name}", ln=True)
+            pdf.cell(0, 10, f"Date: {last_record.created_at}", ln=True)
+            pdf.cell(0, 10, f"Healthspan Index: {last_record.healthspan_index}", ln=True)
+            pdf.cell(0, 10, f"Classification: {classify_healthspan(last_record.healthspan_index)}", ln=True)
+            pdf.cell(0, 10, f"AI Confidence: {last_record.ai_confidence}%", ln=True)
 
-    st.subheader("Frailty vs Risk Level")
-
-    fig = px.box(
-        df,
-        x="Risk Level",
-        y="Frailty Score",
-        color="Risk Level",
-        title="Frailty Score Distribution by Risk Level"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# ----------------------------------------------------------
-# MODIFY NEW ASSESSMENT OUTPUT (Enhance Existing Button)
-# ----------------------------------------------------------
-if page == "New Assessment" and len(st.session_state.registry) > 0:
-
-    latest_record = st.session_state.registry[-1]
-
-    st.markdown("### Clinical Severity Badge")
-    st.markdown(f"## {severity_badge(latest_record['Risk Level'])}")
-
-    show_risk_explanation()
-
-    st.markdown("### Generate Professional PDF Report")
-
-    if st.button("Generate PDF Report"):
-        pdf_path = generate_pdf(latest_record)
-
-        with open(pdf_path, "rb") as f:
-            st.download_button(
-                "Download PDF Report",
-                f,
-                file_name="PASSAGE_CDS_Report.pdf",
-                mime="application/pdf"
+            pdf.ln(10)
+            pdf.multi_cell(0, 8,
+                "This report is generated by PASSAGE Healthspan CDS. "
+                "This tool supports preventive screening and does not replace physician judgment."
             )
+
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            pdf.output(temp_file.name)
+
+            with open(temp_file.name, "rb") as f:
+                st.download_button(
+                    "Click to Download PDF",
+                    f,
+                    file_name="PASSAGE_Healthspan_Report.pdf",
+                    mime="application/pdf"
+                )
