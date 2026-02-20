@@ -1,114 +1,72 @@
+import streamlit as st
+import pandas as pd
 import os
-import math
+from sqlalchemy import create_engine, Column, Integer, Float, String, Boolean, DateTime
+from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin
 from cryptography.fernet import Fernet
-from dotenv import load_dotenv
 
-load_dotenv()
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
+st.set_page_config(page_title="PASSAGE Healthspan CDS", layout="wide")
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
-app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///health.db"
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# -----------------------------
+# SECRETS (Streamlit Cloud)
+# -----------------------------
+SECRET_KEY = st.secrets.get("SECRET_KEY", "devkey")
+DATABASE_URL = st.secrets.get("DATABASE_URL", "sqlite:///health.db")
+FERNET_KEY = st.secrets.get("FERNET_KEY")
 
-db = SQLAlchemy(app)
-login_manager = LoginManager(app)
+if not FERNET_KEY:
+    st.error("FERNET_KEY not set in Streamlit Secrets")
+    st.stop()
 
-fernet = Fernet(os.getenv("FERNET_KEY").encode())
+fernet = Fernet(FERNET_KEY.encode())
 
-# ----------------------------
-# Models
-# ----------------------------
+# -----------------------------
+# DATABASE
+# -----------------------------
+engine = create_engine(DATABASE_URL)
+Session = sessionmaker(bind=engine)
+session = Session()
+Base = declarative_base()
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True)
-    password = db.Column(db.String(200))
-    role = db.Column(db.String(50))  # admin / clinician
+class Assessment(Base):
+    __tablename__ = "assessments"
 
-class Patient(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    encrypted_name = db.Column(db.Text)
-    dob = db.Column(db.Date)
-    sex = db.Column(db.String(10))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id = Column(Integer, primary_key=True)
+    patient_name = Column(String)
+    gait_speed = Column(Float)
+    grip_strength = Column(Float)
+    tug_time = Column(Float)
+    moca_score = Column(Integer)
+    phq9 = Column(Integer)
+    gad7 = Column(Integer)
+    sbp = Column(Float)
+    hba1c = Column(Float)
+    whoqol = Column(Float)
+    healthspan_index = Column(Float)
+    ai_confidence = Column(Float)
+    consent = Column(Boolean)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-class Assessment(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'))
-    date = db.Column(db.DateTime, default=datetime.utcnow)
+Base.metadata.create_all(engine)
 
-    # Functional
-    gait_speed = db.Column(db.Float)
-    grip_strength = db.Column(db.Float)
-    tug_time = db.Column(db.Float)
-
-    # Cognitive
-    moca_score = db.Column(db.Integer)
-
-    # Mental
-    phq9 = db.Column(db.Integer)
-    gad7 = db.Column(db.Integer)
-
-    # Cardio
-    sbp = db.Column(db.Float)
-    total_chol = db.Column(db.Float)
-    smoker = db.Column(db.Boolean)
-
-    # Labs
-    hba1c = db.Column(db.Float)
-    ldl = db.Column(db.Float)
-    egfr = db.Column(db.Float)
-
-    # QoL
-    whoqol = db.Column(db.Float)
-
-    # AI Outputs
-    healthspan_index = db.Column(db.Float)
-    ai_confidence = db.Column(db.Float)
-
-    consent = db.Column(db.Boolean)
-    cohort_flag = db.Column(db.Boolean)
-
-# ----------------------------
-# Encryption helpers
-# ----------------------------
-
-def encrypt(text):
-    return fernet.encrypt(text.encode()).decode()
-
-def decrypt(token):
-    return fernet.decrypt(token.encode()).decode()
-
-# ----------------------------
-# Healthspan Index Algorithm
-# ----------------------------
-
+# -----------------------------
+# SCORING ENGINE
+# -----------------------------
 def calculate_healthspan(data):
     score = 0
-
-    # Functional
     score += min(data["gait_speed"] / 1.2, 1) * 15
     score += min(data["grip_strength"] / 35, 1) * 10
     score += (1 - min(data["tug_time"] / 20, 1)) * 10
-
-    # Cognitive
     score += (data["moca_score"] / 30) * 15
-
-    # Mental
     score += (1 - data["phq9"] / 27) * 10
     score += (1 - data["gad7"] / 21) * 5
-
-    # Cardio
     score += (1 - min(data["sbp"] / 180, 1)) * 10
     score += (1 - min(data["hba1c"] / 10, 1)) * 10
-
-    # QoL
     score += (data["whoqol"] / 100) * 15
-
     return round(score, 2)
 
 def calculate_confidence(data):
@@ -116,73 +74,100 @@ def calculate_confidence(data):
     total = len(data)
     return round((filled / total) * 100, 2)
 
-# ----------------------------
-# Routes
-# ----------------------------
+# -----------------------------
+# UI
+# -----------------------------
+st.title("🧠 PASSAGE Healthspan Clinical Decision Support")
 
-@app.route("/create_patient", methods=["POST"])
-def create_patient():
-    data = request.json
-    patient = Patient(
-        encrypted_name=encrypt(data["name"]),
-        dob=datetime.strptime(data["dob"], "%Y-%m-%d"),
-        sex=data["sex"]
-    )
-    db.session.add(patient)
-    db.session.commit()
-    return jsonify({"message": "Patient created"}), 201
+menu = st.sidebar.selectbox("Navigation", ["New Assessment", "Population Dashboard"])
 
-@app.route("/new_assessment/<int:patient_id>", methods=["POST"])
-def new_assessment(patient_id):
-    data = request.json
+# -----------------------------
+# NEW ASSESSMENT
+# -----------------------------
+if menu == "New Assessment":
+    st.header("New Clinical Assessment")
 
-    healthspan = calculate_healthspan(data)
-    confidence = calculate_confidence(data)
+    with st.form("assessment_form"):
+        col1, col2 = st.columns(2)
 
-    assessment = Assessment(
-        patient_id=patient_id,
-        gait_speed=data["gait_speed"],
-        grip_strength=data["grip_strength"],
-        tug_time=data["tug_time"],
-        moca_score=data["moca_score"],
-        phq9=data["phq9"],
-        gad7=data["gad7"],
-        sbp=data["sbp"],
-        total_chol=data["total_chol"],
-        smoker=data["smoker"],
-        hba1c=data["hba1c"],
-        ldl=data["ldl"],
-        egfr=data["egfr"],
-        whoqol=data["whoqol"],
-        healthspan_index=healthspan,
-        ai_confidence=confidence,
-        consent=data["consent"],
-        cohort_flag=data.get("cohort_flag", False)
-    )
+        with col1:
+            patient_name = st.text_input("Patient Name")
+            gait_speed = st.number_input("Gait Speed (m/s)", 0.0, 3.0)
+            grip_strength = st.number_input("Grip Strength (kg)", 0.0, 100.0)
+            tug_time = st.number_input("TUG Time (sec)", 0.0, 60.0)
+            moca_score = st.number_input("MoCA Score", 0, 30)
 
-    db.session.add(assessment)
-    db.session.commit()
+        with col2:
+            phq9 = st.number_input("PHQ-9 Score", 0, 27)
+            gad7 = st.number_input("GAD-7 Score", 0, 21)
+            sbp = st.number_input("Systolic BP", 0.0, 250.0)
+            hba1c = st.number_input("HbA1c (%)", 0.0, 15.0)
+            whoqol = st.number_input("WHOQOL-OLD Score (0-100)", 0.0, 100.0)
 
-    return jsonify({
-        "healthspan_index": healthspan,
-        "ai_confidence": confidence
-    })
+        consent = st.checkbox("I consent to PDPA-compliant data processing")
+        submitted = st.form_submit_button("Submit Assessment")
 
-@app.route("/dashboard")
-def dashboard():
-    avg_score = db.session.query(
-        db.func.avg(Assessment.healthspan_index)
-    ).scalar()
-    return jsonify({"population_avg_healthspan": round(avg_score or 0,2)})
+        if submitted:
+            if not consent:
+                st.warning("Consent required")
+            else:
+                data = {
+                    "gait_speed": gait_speed,
+                    "grip_strength": grip_strength,
+                    "tug_time": tug_time,
+                    "moca_score": moca_score,
+                    "phq9": phq9,
+                    "gad7": gad7,
+                    "sbp": sbp,
+                    "hba1c": hba1c,
+                    "whoqol": whoqol,
+                }
 
-@app.route("/backup")
-def backup():
-    os.system("pg_dump $DATABASE_URL > backup.sql")
-    return jsonify({"message": "Backup triggered"})
+                healthspan = calculate_healthspan(data)
+                confidence = calculate_confidence(data)
 
-# ----------------------------
-# Run (Production ready)
-# ----------------------------
+                encrypted_name = fernet.encrypt(patient_name.encode()).decode()
 
-if __name__ == "__main__":
-    app.run()
+                record = Assessment(
+                    patient_name=encrypted_name,
+                    gait_speed=gait_speed,
+                    grip_strength=grip_strength,
+                    tug_time=tug_time,
+                    moca_score=moca_score,
+                    phq9=phq9,
+                    gad7=gad7,
+                    sbp=sbp,
+                    hba1c=hba1c,
+                    whoqol=whoqol,
+                    healthspan_index=healthspan,
+                    ai_confidence=confidence,
+                    consent=True
+                )
+
+                session.add(record)
+                session.commit()
+
+                st.success("Assessment saved successfully")
+                st.metric("Healthspan Index", healthspan)
+                st.metric("AI Confidence (%)", confidence)
+
+# -----------------------------
+# DASHBOARD
+# -----------------------------
+if menu == "Population Dashboard":
+    st.header("Population Health Dashboard")
+
+    records = session.query(Assessment).all()
+
+    if records:
+        df = pd.DataFrame([{
+            "Healthspan": r.healthspan_index,
+            "Confidence": r.ai_confidence,
+            "Date": r.created_at
+        } for r in records])
+
+        st.line_chart(df.set_index("Date")["Healthspan"])
+        st.metric("Population Average", round(df["Healthspan"].mean(), 2))
+        st.metric("Average AI Confidence", round(df["Confidence"].mean(), 2))
+    else:
+        st.info("No data available yet.")
