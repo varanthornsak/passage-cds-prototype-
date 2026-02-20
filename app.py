@@ -1,241 +1,188 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
 import os
-import datetime
-import hashlib
-from sqlalchemy import create_engine
-from sqlalchemy.exc import SQLAlchemyError
+import math
+from datetime import datetime
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin
+from cryptography.fernet import Fernet
+from dotenv import load_dotenv
 
-st.set_page_config(page_title="PASSAGE Health", layout="wide")
+load_dotenv()
 
-# =====================================================
-# CONFIG
-# =====================================================
-DATABASE_URL = os.environ.get("DATABASE_URL")  # ถ้ามีจะใช้ PostgreSQL
-LOCAL_FILE = "passage_local_db.csv"
-AUDIT_FILE = "audit_log.txt"
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# =====================================================
-# UTIL
-# =====================================================
-def hash_password(pw):
-    return hashlib.sha256(pw.encode()).hexdigest()
+db = SQLAlchemy(app)
+login_manager = LoginManager(app)
 
-def log_action(user, action):
-    with open(AUDIT_FILE, "a") as f:
-        f.write(f"{datetime.datetime.now()} | {user} | {action}\n")
+fernet = Fernet(os.getenv("FERNET_KEY").encode())
 
-def logistic(x):
-    return 1 / (1 + np.exp(-x))
+# ----------------------------
+# Models
+# ----------------------------
 
-# =====================================================
-# DATABASE MODE
-# =====================================================
-if DATABASE_URL:
-    engine = create_engine(DATABASE_URL)
-    DB_MODE = "PostgreSQL"
-else:
-    DB_MODE = "Local CSV"
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True)
+    password = db.Column(db.String(200))
+    role = db.Column(db.String(50))  # admin / clinician
 
-def load_data():
-    if DB_MODE == "PostgreSQL":
-        try:
-            return pd.read_sql("SELECT * FROM patients", engine)
-        except:
-            return pd.DataFrame()
-    else:
-        if os.path.exists(LOCAL_FILE):
-            return pd.read_csv(LOCAL_FILE)
-        else:
-            return pd.DataFrame(columns=[
-                "PatientID","Age","ClinicalScore",
-                "FunctionalScore","SocialScore",
-                "RiskPercent","RiskLevel",
-                "AIConfidence","Timestamp","User"
-            ])
+class Patient(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    encrypted_name = db.Column(db.Text)
+    dob = db.Column(db.Date)
+    sex = db.Column(db.String(10))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-def save_data(df):
-    if DB_MODE == "PostgreSQL":
-        try:
-            df.to_sql("patients", engine, if_exists="append", index=False)
-        except SQLAlchemyError as e:
-            st.error("Database error")
-    else:
-        df_existing = load_data()
-        df_all = pd.concat([df_existing, df], ignore_index=True)
-        df_all.to_csv(LOCAL_FILE, index=False)
+class Assessment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'))
+    date = db.Column(db.DateTime, default=datetime.utcnow)
 
-# =====================================================
-# LOGIN (Simple Secure)
-# =====================================================
-USERS = {
-    "admin": hash_password("admin123"),
-    "doctor": hash_password("doctor123")
-}
+    # Functional
+    gait_speed = db.Column(db.Float)
+    grip_strength = db.Column(db.Float)
+    tug_time = db.Column(db.Float)
 
-if "auth" not in st.session_state:
-    st.session_state.auth = False
+    # Cognitive
+    moca_score = db.Column(db.Integer)
 
-if not st.session_state.auth:
-    st.title("PASSAGE Health Login")
-    u = st.text_input("Username")
-    p = st.text_input("Password", type="password")
+    # Mental
+    phq9 = db.Column(db.Integer)
+    gad7 = db.Column(db.Integer)
 
-    if st.button("Login"):
-        if u in USERS and USERS[u] == hash_password(p):
-            st.session_state.auth = True
-            st.session_state.user = u
-            log_action(u, "Login success")
-            st.rerun()
-        else:
-            st.error("Invalid credentials")
-    st.stop()
+    # Cardio
+    sbp = db.Column(db.Float)
+    total_chol = db.Column(db.Float)
+    smoker = db.Column(db.Boolean)
 
-# =====================================================
-# MAIN SYSTEM
-# =====================================================
-st.sidebar.title("PASSAGE Health")
-st.sidebar.write(f"User: {st.session_state.user}")
-st.sidebar.write(f"Database Mode: {DB_MODE}")
+    # Labs
+    hba1c = db.Column(db.Float)
+    ldl = db.Column(db.Float)
+    egfr = db.Column(db.Float)
 
-menu = st.sidebar.radio("Menu", [
-    "New Assessment",
-    "Patient Registry",
-    "Population Dashboard"
-])
+    # QoL
+    whoqol = db.Column(db.Float)
 
-df = load_data()
+    # AI Outputs
+    healthspan_index = db.Column(db.Float)
+    ai_confidence = db.Column(db.Float)
 
-# =====================================================
-# RISK ENGINE
-# =====================================================
-def calculate_risk(age, comorbidity, qol,
-                   gait_speed, frailty,
-                   living_alone, fall):
+    consent = db.Column(db.Boolean)
+    cohort_flag = db.Column(db.Boolean)
 
-    clinical = 0
-    if age >= 75: clinical += 2
-    if comorbidity == "Multiple": clinical += 3
-    if qol < 60: clinical += 2
+# ----------------------------
+# Encryption helpers
+# ----------------------------
 
-    functional = 0
-    if gait_speed < 0.8: functional += 2
-    if frailty >= 3: functional += 3
+def encrypt(text):
+    return fernet.encrypt(text.encode()).decode()
 
-    social = 0
-    if living_alone: social += 1
-    if fall: social += 2
+def decrypt(token):
+    return fernet.decrypt(token.encode()).decode()
 
-    total = clinical + functional + social
-    risk = logistic((total - 4) * 0.9)
-    confidence = min(0.95, 0.6 + total*0.03)
+# ----------------------------
+# Healthspan Index Algorithm
+# ----------------------------
 
-    return clinical, functional, social, risk, confidence
+def calculate_healthspan(data):
+    score = 0
 
-# =====================================================
-# NEW ASSESSMENT
-# =====================================================
-if menu == "New Assessment":
+    # Functional
+    score += min(data["gait_speed"] / 1.2, 1) * 15
+    score += min(data["grip_strength"] / 35, 1) * 10
+    score += (1 - min(data["tug_time"] / 20, 1)) * 10
 
-    st.title("New Patient Assessment")
+    # Cognitive
+    score += (data["moca_score"] / 30) * 15
 
-    consent = st.checkbox("Patient consent obtained (PDPA required)")
-    if not consent:
-        st.warning("Consent required before proceeding")
-        st.stop()
+    # Mental
+    score += (1 - data["phq9"] / 27) * 10
+    score += (1 - data["gad7"] / 21) * 5
 
-    col1, col2, col3 = st.columns(3)
+    # Cardio
+    score += (1 - min(data["sbp"] / 180, 1)) * 10
+    score += (1 - min(data["hba1c"] / 10, 1)) * 10
 
-    with col1:
-        pid = st.text_input("Patient ID")
-        age = st.number_input("Age", 40, 100, 70)
-        comorbidity = st.selectbox("Comorbidity",
-                                   ["None","Single","Multiple"])
-        qol = st.slider("Quality of Life",0,100,70)
+    # QoL
+    score += (data["whoqol"] / 100) * 15
 
-    with col2:
-        gait = st.number_input("Gait Speed (m/s)",0.1,2.0,1.0)
-        frailty = st.slider("Frailty Score (0-5)",0,5,1)
+    return round(score, 2)
 
-    with col3:
-        living = st.checkbox("Living Alone")
-        fall = st.checkbox("Fall in past year")
+def calculate_confidence(data):
+    filled = sum(1 for v in data.values() if v is not None)
+    total = len(data)
+    return round((filled / total) * 100, 2)
 
-    if st.button("Generate Risk"):
+# ----------------------------
+# Routes
+# ----------------------------
 
-        if pid == "":
-            st.warning("Enter Patient ID")
-        else:
-            clinical, functional, social, risk, conf = calculate_risk(
-                age, comorbidity, qol,
-                gait, frailty,
-                living, fall
-            )
+@app.route("/create_patient", methods=["POST"])
+def create_patient():
+    data = request.json
+    patient = Patient(
+        encrypted_name=encrypt(data["name"]),
+        dob=datetime.strptime(data["dob"], "%Y-%m-%d"),
+        sex=data["sex"]
+    )
+    db.session.add(patient)
+    db.session.commit()
+    return jsonify({"message": "Patient created"}), 201
 
-            if risk < 0.2:
-                level = "Low"
-            elif risk < 0.5:
-                level = "Moderate"
-            else:
-                level = "High"
+@app.route("/new_assessment/<int:patient_id>", methods=["POST"])
+def new_assessment(patient_id):
+    data = request.json
 
-            st.metric("Risk %", f"{risk*100:.1f}%")
-            st.metric("AI Confidence", f"{conf*100:.1f}%")
-            st.progress(risk)
+    healthspan = calculate_healthspan(data)
+    confidence = calculate_confidence(data)
 
-            new_row = pd.DataFrame([{
-                "PatientID": pid,
-                "Age": age,
-                "ClinicalScore": clinical,
-                "FunctionalScore": functional,
-                "SocialScore": social,
-                "RiskPercent": risk*100,
-                "RiskLevel": level,
-                "AIConfidence": conf*100,
-                "Timestamp": datetime.datetime.now(),
-                "User": st.session_state.user
-            }])
+    assessment = Assessment(
+        patient_id=patient_id,
+        gait_speed=data["gait_speed"],
+        grip_strength=data["grip_strength"],
+        tug_time=data["tug_time"],
+        moca_score=data["moca_score"],
+        phq9=data["phq9"],
+        gad7=data["gad7"],
+        sbp=data["sbp"],
+        total_chol=data["total_chol"],
+        smoker=data["smoker"],
+        hba1c=data["hba1c"],
+        ldl=data["ldl"],
+        egfr=data["egfr"],
+        whoqol=data["whoqol"],
+        healthspan_index=healthspan,
+        ai_confidence=confidence,
+        consent=data["consent"],
+        cohort_flag=data.get("cohort_flag", False)
+    )
 
-            save_data(new_row)
-            log_action(st.session_state.user,
-                       f"Created assessment for {pid}")
+    db.session.add(assessment)
+    db.session.commit()
 
-            st.success("Saved successfully")
+    return jsonify({
+        "healthspan_index": healthspan,
+        "ai_confidence": confidence
+    })
 
-# =====================================================
-# REGISTRY
-# =====================================================
-elif menu == "Patient Registry":
+@app.route("/dashboard")
+def dashboard():
+    avg_score = db.session.query(
+        db.func.avg(Assessment.healthspan_index)
+    ).scalar()
+    return jsonify({"population_avg_healthspan": round(avg_score or 0,2)})
 
-    st.title("Patient Registry")
+@app.route("/backup")
+def backup():
+    os.system("pg_dump $DATABASE_URL > backup.sql")
+    return jsonify({"message": "Backup triggered"})
 
-    if df.empty:
-        st.info("No data")
-    else:
-        selected = st.selectbox("Select Patient",
-                                df["PatientID"].unique())
-        sub = df[df["PatientID"] == selected]
-        st.dataframe(sub.sort_values("Timestamp"))
-        st.line_chart(sub.set_index("Timestamp")["RiskPercent"])
+# ----------------------------
+# Run (Production ready)
+# ----------------------------
 
-# =====================================================
-# POPULATION DASHBOARD
-# =====================================================
-elif menu == "Population Dashboard":
-
-    st.title("Population Dashboard")
-
-    if df.empty:
-        st.info("No data")
-    else:
-        st.metric("Total Patients",
-                  df["PatientID"].nunique())
-        st.metric("High Risk %",
-                  round((df["RiskLevel"]=="High").mean()*100,1))
-
-        st.bar_chart(df["RiskLevel"].value_counts())
-        st.scatter_chart(df[["Age","RiskPercent"]])
-
-st.markdown("---")
-st.caption("PASSAGE Health | Production-Lite Digital Health Platform")
+if __name__ == "__main__":
+    app.run()
