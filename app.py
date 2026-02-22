@@ -433,3 +433,147 @@ Final decisions must always be made by qualified medical professionals.
 
     st.markdown("---")
     st.success("End of User Guide")
+# ==========================================================
+# ===== PASSAGE PROFESSIONAL + BUSINESS EXTENSION =========
+# ==========================================================
+
+st.markdown("""
+<style>
+.metric-card {
+    background-color:#f4f6f9;
+    padding:15px;
+    border-radius:12px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.05);
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Platform Mode")
+role = st.sidebar.radio("User Role", ["Clinician", "Research", "Admin (Pro)"])
+
+# ==========================================================
+# EXECUTIVE OVERVIEW
+# ==========================================================
+
+if menu == "Executive Overview":
+
+    st.header("Executive Overview – PASSAGE Platform")
+
+    records = session.query(Assessment).all()
+
+    if len(records) == 0:
+        st.info("No data available.")
+    else:
+        df = pd.DataFrame([{
+            "age": r.age,
+            "raw_fish": int(r.raw_fish),
+            "lft_abnormal": int(r.lft_abnormal),
+            "red_flags": r.red_flags,
+            "healthspan": r.healthspan_index,
+            "target": 1 if r.cca_risk_level=="High Risk" else 0,
+            "date": r.created_at
+        } for r in records])
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("Total Patients", len(df))
+        col2.metric("High Risk %", round(df["target"].mean()*100,1))
+        col3.metric("Average Healthspan", round(df["healthspan"].mean(),2))
+
+        st.markdown("---")
+
+        df["date"] = pd.to_datetime(df["date"])
+        trend = df.groupby(df["date"].dt.date)["target"].mean()
+
+        st.subheader("High Risk Trend Over Time")
+        st.line_chart(trend)
+
+        st.markdown("---")
+
+        st.subheader("Business Model Snapshot")
+
+        st.markdown("""
+        PASSAGE is positioned as:
+
+        • AI-driven Clinical Decision Support (CCA risk stratification)  
+        • Hospital-level SaaS subscription platform  
+        • Government screening integration infrastructure  
+        • Research analytics engine  
+
+        Revenue Model:
+        - B2B Annual License
+        - Institutional Pro Analytics Tier
+        - Research Collaboration Model
+        """)
+
+# ==========================================================
+# ENHANCED ML CONFIDENCE (PRO MODE)
+# ==========================================================
+
+if menu == "Population Dashboard" and role == "Admin (Pro)":
+
+    records = session.query(Assessment).all()
+
+    if len(records) >= 5:
+
+        df = pd.DataFrame([{
+            "age": r.age,
+            "raw_fish": int(r.raw_fish),
+            "lft_abnormal": int(r.lft_abnormal),
+            "red_flags": r.red_flags,
+            "healthspan": r.healthspan_index,
+            "target": 1 if r.cca_risk_level=="High Risk" else 0
+        } for r in records])
+
+        X = df[["age","raw_fish","lft_abnormal","red_flags","healthspan"]]
+        y = df["target"]
+
+        model = LogisticRegression()
+        model.fit(X,y)
+
+        y_prob = model.predict_proba(X)[:,1]
+        confidence = np.mean(y_prob)*100
+
+        st.markdown("---")
+        st.subheader("AI Model Confidence (Pro Analytics)")
+        st.metric("Average AI Confidence (%)", round(confidence,1))
+
+# ==========================================================
+# DATA GOVERNANCE SECTION
+# ==========================================================
+
+if menu == "User Guide":
+
+    st.markdown("---")
+    st.subheader("8. Data Governance & Compliance")
+
+    st.markdown("""
+    • Local encrypted SQLite database (development mode)  
+    • No external data transmission  
+    • Role-based feature separation  
+    • Designed for PDPA compliance framework  
+    • Future roadmap: ISO 27001 alignment  
+    • Future roadmap: Software as Medical Device validation pathway  
+    """)
+
+    st.markdown("---")
+    st.subheader("9. Public Health & Economic Impact")
+
+    st.markdown("""
+    Early detection of cholangiocarcinoma reduces late-stage treatment burden,
+    improves survival outcomes, and decreases healthcare system cost.
+
+    PASSAGE aims to evolve into:
+
+    • Regional CCA AI screening infrastructure  
+    • Institutional research-grade registry  
+    • Government-integrated decision support platform  
+    """)
+
+# ==========================================================
+# VERSION FOOTER
+# ==========================================================
+
+st.markdown("---")
+st.caption("PASSAGE Platform v3.1 | Institutional Prototype | Faculty of Medicine, KKU")
