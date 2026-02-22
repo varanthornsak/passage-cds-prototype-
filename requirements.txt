@@ -9,3 +9,4 @@ cryptography
 scikit-learn
 fpdf
 matplotlib
+reportlab
