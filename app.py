@@ -291,3 +291,158 @@ if menu == "New Assessment":
                     file_name="PASSAGE_Healthspan_Report.pdf",
                     mime="application/pdf"
                 )
+
+# ==========================================================
+# ADVANCED AI RESEARCH MODULE – PASSAGE 2.0
+# ==========================================================
+
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_curve, auc
+import matplotlib.pyplot as plt
+
+# ----------------------------------------------------------
+# Institutional Header
+# ----------------------------------------------------------
+st.markdown("""
+---
+# PASSAGE 2.0 Clinical Decision Support System  
+### Faculty of Medicine, Khon Kaen University  
+Digital Health Innovation & Preventive Oncology Research Unit
+---
+""")
+
+# ----------------------------------------------------------
+# MACHINE LEARNING TRAINING
+# ----------------------------------------------------------
+def train_logistic_model(records):
+
+    if len(records) < 10:
+        return None, None, None
+
+    df = pd.DataFrame([{
+        "age": r.age,
+        "raw_fish": int(r.raw_fish),
+        "lft_abnormal": int(r.lft_abnormal),
+        "red_flags": r.red_flags,
+        "healthspan": r.healthspan_index,
+        "target": 1 if r.cca_risk_level == "High Risk" else 0
+    } for r in records])
+
+    X = df[["age", "raw_fish", "lft_abnormal", "red_flags", "healthspan"]]
+    y = df["target"]
+
+    model = LogisticRegression()
+    model.fit(X, y)
+
+    y_prob = model.predict_proba(X)[:,1]
+
+    fpr, tpr, _ = roc_curve(y, y_prob)
+    roc_auc = auc(fpr, tpr)
+
+    return model, (fpr, tpr, roc_auc), df
+
+
+# ----------------------------------------------------------
+# AI DASHBOARD EXTENSION
+# ----------------------------------------------------------
+if menu == "Population Dashboard":
+
+    records = session.query(Assessment).all()
+
+    model, roc_data, df = train_logistic_model(records)
+
+    if model:
+
+        st.subheader("Machine Learning Model – Logistic Regression")
+
+        st.write("Model trained automatically on available database records.")
+
+        fpr, tpr, roc_auc = roc_data
+
+        fig = plt.figure()
+        plt.plot(fpr, tpr, label=f"ROC curve (AUC = {roc_auc:.2f})")
+        plt.plot([0,1], [0,1], linestyle='--')
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title("ROC Curve – CCA Risk Prediction")
+        plt.legend(loc="lower right")
+        st.pyplot(fig)
+
+        st.metric("Model AUC", round(roc_auc, 3))
+
+    else:
+        st.info("Need at least 10 records for ML training.")
+
+
+# ----------------------------------------------------------
+# INDIVIDUAL ML PREDICTION
+# ----------------------------------------------------------
+if menu == "New Assessment":
+
+    records = session.query(Assessment).all()
+    model, roc_data, df = train_logistic_model(records)
+
+    latest = session.query(Assessment).order_by(Assessment.id.desc()).first()
+
+    if model and latest:
+
+        X_new = np.array([[
+            latest.age,
+            int(latest.raw_fish),
+            int(latest.lft_abnormal),
+            latest.red_flags,
+            latest.healthspan_index
+        ]])
+
+        prob = model.predict_proba(X_new)[0][1]
+
+        st.subheader("AI Predicted High-Risk Probability")
+        st.metric("Predicted Probability", f"{prob*100:.2f} %")
+
+
+# ----------------------------------------------------------
+# AUTOMATIC RESEARCH REPORT EXPORT
+# ----------------------------------------------------------
+if menu == "Population Dashboard":
+
+    if st.button("Generate Research Summary Report (PDF)"):
+
+        records = session.query(Assessment).all()
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 14)
+
+        pdf.cell(0, 10, "PASSAGE 2.0 Research Report", ln=True)
+        pdf.cell(0, 10, "Khon Kaen University – Clinical AI Unit", ln=True)
+        pdf.ln(5)
+
+        pdf.set_font("Arial", "", 12)
+
+        pdf.cell(0, 10, f"Total Records: {len(records)}", ln=True)
+
+        if len(records) > 0:
+            avg_healthspan = np.mean([r.healthspan_index for r in records])
+            pdf.cell(0, 10, f"Average Healthspan Index: {avg_healthspan:.2f}", ln=True)
+
+            high_risk = sum(1 for r in records if r.cca_risk_level == "High Risk")
+            pdf.cell(0, 10, f"High Risk Cases: {high_risk}", ln=True)
+
+        pdf.ln(10)
+        pdf.multi_cell(0, 8,
+            "This report summarizes AI-assisted screening performance "
+            "and population health analytics. "
+            "This system is intended for research and preventive screening."
+        )
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        pdf.output(temp_file.name)
+
+        with open(temp_file.name, "rb") as f:
+            st.download_button(
+                "Download Research Report",
+                f,
+                file_name="PASSAGE_Research_Report.pdf",
+                mime="application/pdf"
+            )
