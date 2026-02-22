@@ -8,28 +8,26 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib import colors
-from reportlab.lib.units import inch
-from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import inch
 import tempfile
 
-# --------------------------------------------------
+# ==========================================================
 # PAGE CONFIG
-# --------------------------------------------------
-st.set_page_config(page_title="PASSAGE 3.0 | KKU", layout="wide")
+# ==========================================================
+st.set_page_config(page_title="PASSAGE  | KKU", layout="wide")
 
 st.markdown("""
-# PASSAGE 3.0 Clinical Decision Support System  
+# PASSAGE Clinical Decision Support System  
 ### Faculty of Medicine, Khon Kaen University  
 Digital Health Innovation & Preventive Oncology Research Unit
 ---
 """)
 
-# --------------------------------------------------
-# DATABASE
-# --------------------------------------------------
+# ==========================================================
+# DATABASE (DEV MODE AUTO RESET)
+# ==========================================================
 DATABASE_URL = "sqlite:///health.db"
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
@@ -62,11 +60,13 @@ class Assessment(Base):
     ai_confidence = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+# 🔥 DEV RESET
+Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
 
-# --------------------------------------------------
-# HEALTHSPAN SCORING
-# --------------------------------------------------
+# ==========================================================
+# SCORING ENGINE
+# ==========================================================
 def calculate_healthspan(data):
     score = 0
     score += min(data["gait_speed"] / 1.2, 1) * 15
@@ -89,17 +89,17 @@ def classify_risk(age, raw_fish, lft_abnormal, red_flags):
     else:
         return "Low Risk"
 
-# --------------------------------------------------
+# ==========================================================
 # MENU
-# --------------------------------------------------
+# ==========================================================
 menu = st.sidebar.selectbox(
     "Navigation",
-    ["New Assessment", "Population Dashboard"]
+    ["New Assessment", "Population Dashboard", "User Guide"]
 )
 
-# --------------------------------------------------
+# ==========================================================
 # NEW ASSESSMENT
-# --------------------------------------------------
+# ==========================================================
 if menu == "New Assessment":
 
     st.header("New Clinical Assessment")
@@ -114,7 +114,6 @@ if menu == "New Assessment":
             raw_fish = st.checkbox("Raw fish consumption")
             lft_abnormal = st.checkbox("Abnormal LFT")
             red_flags = st.number_input("Red Flag Symptoms", 0, 5)
-
             gait_speed = st.number_input("Gait Speed (m/s)", 0.0, 3.0)
             grip_strength = st.number_input("Grip Strength (kg)", 0.0, 100.0)
             tug_time = st.number_input("TUG Time (sec)", 0.0, 60.0)
@@ -162,9 +161,9 @@ if menu == "New Assessment":
             st.metric("Healthspan Index", healthspan)
             st.metric("CCA Risk Level", cca_risk)
 
-# --------------------------------------------------
-# DASHBOARD
-# --------------------------------------------------
+# ==========================================================
+# POPULATION DASHBOARD + ML
+# ==========================================================
 if menu == "Population Dashboard":
 
     records = session.query(Assessment).all()
@@ -196,22 +195,23 @@ if menu == "Population Dashboard":
         fig = plt.figure()
         plt.plot(fpr,tpr,label=f"AUC={roc_auc:.2f}")
         plt.plot([0,1],[0,1],'--')
-        plt.xlabel("FPR")
-        plt.ylabel("TPR")
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
         plt.legend()
         st.pyplot(fig)
 
         st.metric("Model AUC", round(roc_auc,3))
         st.metric("Average Healthspan", round(df["healthspan"].mean(),2))
 
-        if st.button("Generate Research Report"):
+        # PDF Research Report
+        if st.button("Generate Research Report (PDF)"):
 
             temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
             doc = SimpleDocTemplate(temp.name, pagesize=A4)
             styles = getSampleStyleSheet()
             elements = []
 
-            elements.append(Paragraph("PASSAGE 3.0 Research Summary", styles["Title"]))
+            elements.append(Paragraph("PASSAGE Research Summary", styles["Title"]))
             elements.append(Spacer(1,0.3*inch))
             elements.append(Paragraph(f"Total Records: {len(records)}", styles["Normal"]))
             elements.append(Paragraph(f"Model AUC: {roc_auc:.2f}", styles["Normal"]))
@@ -225,6 +225,211 @@ if menu == "Population Dashboard":
             doc.build(elements)
 
             with open(temp.name,"rb") as f:
-                st.download_button("Download PDF", f,
+                st.download_button(
+                    "Download PDF",
+                    f,
                     file_name="PASSAGE_Research_Report.pdf",
-                    mime="application/pdf")
+                    mime="application/pdf"
+                )
+                # ==========================================================
+# USER GUIDE – DETAILED CLINICAL VERSION
+# ==========================================================
+if menu == "User Guide":
+
+    st.header("PASSAGE 3.0 – Detailed User Guide")
+    st.markdown("---")
+
+    st.subheader("1. System Overview")
+
+    st.markdown("""
+PASSAGE (Preventive Assessment System for Sustainable Ageing & Geriatric Evaluation) 
+is an AI-assisted Clinical Decision Support System developed for preventive health screening 
+and population-level analytics.
+
+The system integrates:
+
+• Functional performance  
+• Cognitive status  
+• Mental health  
+• Cardiometabolic risk  
+• Quality of life  
+• Cholangiocarcinoma (CCA) risk indicators  
+
+Outputs include:
+- Healthspan Index (0–100)
+- CCA Risk Level
+- Machine Learning risk modeling (Logistic Regression)
+- ROC performance metrics
+""")
+
+    # ======================================================
+    st.subheader("2. Variable Interpretation Guide")
+
+    st.markdown("### A. Functional Measures")
+
+    st.markdown("""
+**1. Gait Speed (m/s)**  
+• ≥ 1.0 m/s → Normal mobility  
+• 0.8 – 0.99 m/s → Mild decline  
+• < 0.8 m/s → Frailty risk  
+
+Interpretation:  
+Lower gait speed is associated with sarcopenia, fall risk, and mortality.
+""")
+
+    st.markdown("""
+**2. Grip Strength (kg)**  
+• Male: ≥ 28 kg normal  
+• Female: ≥ 18 kg normal  
+• Below threshold → Possible sarcopenia  
+
+Interpretation:  
+Reduced grip strength correlates with muscle weakness and poor healthspan.
+""")
+
+    st.markdown("""
+**3. Timed Up & Go (TUG) Test (seconds)**  
+• ≤ 10 sec → Normal  
+• 11–20 sec → Mild impairment  
+• > 20 sec → High fall risk  
+
+Interpretation:  
+Longer times indicate mobility impairment and frailty.
+""")
+
+    # ======================================================
+    st.subheader("B. Cognitive Assessment")
+
+    st.markdown("""
+**MoCA Score (0–30)**  
+• ≥ 26 → Normal cognition  
+• 18–25 → Mild cognitive impairment  
+• < 18 → Possible dementia  
+
+Interpretation:  
+Lower scores suggest cognitive decline affecting functional independence.
+""")
+
+    # ======================================================
+    st.subheader("C. Mental Health")
+
+    st.markdown("""
+**PHQ-9 (Depression Screening)**  
+• 0–4 → Minimal  
+• 5–9 → Mild  
+• 10–14 → Moderate  
+• 15–27 → Severe  
+
+**GAD-7 (Anxiety Screening)**  
+• 0–4 → Minimal  
+• 5–9 → Mild  
+• 10–14 → Moderate  
+• 15–21 → Severe  
+
+Interpretation:  
+Higher scores negatively affect overall healthspan and quality of life.
+""")
+
+    # ======================================================
+    st.subheader("D. Cardiometabolic Indicators")
+
+    st.markdown("""
+**Systolic Blood Pressure (mmHg)**  
+• < 120 → Normal  
+• 120–129 → Elevated  
+• 130–139 → Stage 1 HT  
+• ≥ 140 → Stage 2 HT  
+
+**HbA1c (%)**  
+• < 5.7 → Normal  
+• 5.7–6.4 → Prediabetes  
+• ≥ 6.5 → Diabetes  
+
+Interpretation:  
+Chronic cardiometabolic dysregulation reduces long-term healthspan.
+""")
+
+    # ======================================================
+    st.subheader("E. Quality of Life")
+
+    st.markdown("""
+**WHOQOL-OLD (0–100)**  
+• ≥ 80 → Excellent quality of life  
+• 60–79 → Moderate  
+• < 60 → Poor  
+
+Interpretation:  
+Higher values indicate better perceived well-being.
+""")
+
+    # ======================================================
+    st.subheader("F. CCA Risk Indicators")
+
+    st.markdown("""
+**Age**  
+Risk increases progressively after age 50.
+
+**Raw Fish Consumption**  
+Binary risk factor (Opisthorchis viverrini exposure).
+
+**Abnormal Liver Function Test (LFT)**  
+Suggests hepatobiliary pathology.
+
+**Red Flag Symptoms (0–5 scale)**  
+Includes jaundice, weight loss, RUQ pain, anorexia, cholangitis.
+
+Interpretation:  
+Combined into logistic regression model for CCA risk stratification.
+""")
+
+    # ======================================================
+    st.subheader("3. Healthspan Index Interpretation")
+
+    st.markdown("""
+Healthspan Index is a composite score (0–100) derived from all domains.
+
+• ≥ 80 → Optimal healthspan  
+• 60–79 → Stable  
+• 40–59 → Vulnerable  
+• < 40 → High frailty risk  
+
+This score reflects multi-system biological ageing rather than chronological age.
+""")
+
+    # ======================================================
+    st.subheader("4. Machine Learning Model")
+
+    st.markdown("""
+The Logistic Regression model:
+
+• Trains automatically when ≥ 5 records are available  
+• Predicts probability of High CCA Risk  
+• Generates ROC curve  
+• Reports AUC (Area Under Curve)
+
+AUC Interpretation:
+• 0.5 → No discrimination  
+• 0.6–0.7 → Acceptable  
+• 0.7–0.8 → Good  
+• 0.8–0.9 → Excellent  
+• >0.9 → Outstanding
+""")
+
+    # ======================================================
+    st.subheader("5. Intended Clinical Use")
+
+    st.markdown("""
+PASSAGE is intended for:
+
+• Preventive screening  
+• Population health analytics  
+• Research support  
+• Risk stratification  
+
+Not intended to replace physician clinical judgment.
+
+Final decisions must always be made by qualified medical professionals.
+""")
+
+    st.markdown("---")
+    st.success("End of User Guide")
