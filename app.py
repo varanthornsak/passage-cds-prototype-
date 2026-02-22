@@ -94,7 +94,7 @@ def classify_risk(age, raw_fish, lft_abnormal, red_flags):
 # ==========================================================
 menu = st.sidebar.selectbox(
     "Navigation",
-    ["Executive Overview", "New Assessment", "Population Dashboard", "User Guide"]
+    ["New Assessment", "Executive Overview", "Population Dashboard", "User Guide"]
 )
 
 # ==========================================================
