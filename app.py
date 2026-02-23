@@ -771,4 +771,120 @@ PASSAGE AI Platform | Faculty of Medicine, Khon Kaen University<br>
 Digital Preventive Oncology & AI Research Initiative<br>
 Prototype SaaS Demonstration Version
 </div>
+# ==========================================================
+# ===== PASSAGE PROFESSIONAL ML EXTENSION (DROP-IN) ======
+# ==========================================================
+
+import io
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+import seaborn as sns
+
+st.markdown("---")
+st.markdown("## PASSAGE Advanced Clinical AI Module")
+
+records_ext = session.query(Assessment).all()
+
+if len(records_ext) >= 5:
+
+    df_ext = pd.DataFrame([{
+        "age": r.age,
+        "raw_fish": int(r.raw_fish),
+        "lft_abnormal": int(r.lft_abnormal),
+        "red_flags": r.red_flags,
+        "healthspan": r.healthspan_index,
+        "target": 1 if r.cca_risk_level=="High Risk" else 0
+    } for r in records_ext])
+
+    X_ext = df_ext[["age","raw_fish","lft_abnormal","red_flags","healthspan"]]
+    y_ext = df_ext["target"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_ext, y_ext, test_size=0.3, random_state=42
+    )
+
+    model_ext = LogisticRegression(max_iter=1000)
+    model_ext.fit(X_train, y_train)
+
+    y_pred_ext = model_ext.predict(X_test)
+    y_prob_ext = model_ext.predict_proba(X_test)[:,1]
+
+    auc_score = roc_auc_score(y_test, y_prob_ext)
+    cv_score = cross_val_score(model_ext, X_ext, y_ext, cv=5).mean()
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Test AUC", round(auc_score,3))
+    col2.metric("Cross-Validated AUC", round(cv_score,3))
+    col3.metric("Model Version", "v3.2-logreg")
+
+    st.markdown("---")
+
+    # ==============================
+    # Feature Importance
+    # ==============================
+    st.subheader("Feature Importance")
+
+    importance = pd.DataFrame({
+        "Feature": X_ext.columns,
+        "Coefficient": model_ext.coef_[0]
+    }).sort_values(by="Coefficient", ascending=False)
+
+    st.bar_chart(importance.set_index("Feature"))
+
+    # ==============================
+    # Confusion Matrix
+    # ==============================
+    st.subheader("Confusion Matrix")
+
+    cm = confusion_matrix(y_test, y_pred_ext)
+
+    fig_cm = plt.figure()
+    sns.heatmap(cm, annot=True, fmt="d")
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    st.pyplot(fig_cm)
+
+    # ==============================
+    # Clinical Decision Layer
+    # ==============================
+    st.subheader("Clinical Decision Recommendation")
+
+    high_risk_ratio = df_ext["target"].mean()
+
+    if high_risk_ratio > 0.4:
+        st.error("High institutional risk burden detected. Recommend hepatobiliary screening expansion.")
+    elif high_risk_ratio > 0.2:
+        st.warning("Moderate CCA prevalence. Consider ultrasound screening program.")
+    else:
+        st.success("Low prevalence cohort. Continue preventive surveillance.")
+
+    # ==============================
+    # Dataset Export
+    # ==============================
+    st.markdown("---")
+    st.subheader("Research Data Export")
+
+    csv_buffer = io.StringIO()
+    df_ext.to_csv(csv_buffer, index=False)
+
+    st.download_button(
+        "Download Research Dataset (CSV)",
+        csv_buffer.getvalue(),
+        file_name="PASSAGE_research_dataset.csv",
+        mime="text/csv"
+    )
+
+    # ==============================
+    # Compliance Footer
+    # ==============================
+    st.markdown("---")
+    st.caption("""
+    PASSAGE AI Clinical Module v3.2  
+    Internal Validation Cohort  
+    Prototype Decision Support System – Not for standalone diagnostic use  
+    PDPA-oriented data architecture  
+    """)
+
+else:
+    st.info("Advanced AI module activates when ≥ 5 records are available.")
 """, unsafe_allow_html=True)
