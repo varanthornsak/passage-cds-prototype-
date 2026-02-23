@@ -765,12 +765,13 @@ st.metric("Estimated Annual Revenue (THB)", f"{revenue:,.0f}")
 # PLATFORM FOOTER
 # ==========================================================
 
-st.markdown(""")
+st.markdown("""
 <div class='footer'>
 PASSAGE AI Platform | Faculty of Medicine, Khon Kaen University<br>
 Digital Preventive Oncology & AI Research Initiative<br>
 Prototype SaaS Demonstration Version
 </div>
+""", unsafe_allow_html=True)
 # ==========================================================
 # ===== PASSAGE PROFESSIONAL ML EXTENSION (DROP-IN) ======
 # ==========================================================
