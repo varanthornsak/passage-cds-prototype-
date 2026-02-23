@@ -577,3 +577,199 @@ if menu == "User Guide":
 
 st.markdown("---")
 st.caption("PASSAGE Platform v3.1 | Institutional Prototype | Faculty of Medicine, KKU")
+# ==========================================================
+# ===== PASSAGE ENTERPRISE SaaS LAYOUT =====================
+# ==========================================================
+
+# ---------- MODERN UI THEME ----------
+st.markdown("""
+<style>
+body {
+    background-color:#f7f9fb;
+}
+.saas-card {
+    background:white;
+    padding:20px;
+    border-radius:16px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.06);
+}
+.big-number {
+    font-size:32px;
+    font-weight:700;
+}
+.small-label {
+    color:gray;
+    font-size:14px;
+}
+.footer {
+    text-align:center;
+    font-size:12px;
+    color:gray;
+    padding-top:20px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------- SaaS SIDEBAR ----------
+st.sidebar.markdown("## PASSAGE SaaS Platform")
+subscription = st.sidebar.selectbox(
+    "Subscription Plan",
+    ["Starter (Free)", "Professional", "Enterprise"]
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Deployment Mode")
+environment = st.sidebar.radio("Environment", ["Development", "Institutional", "Government"])
+
+st.sidebar.markdown("---")
+st.sidebar.success("System Status: Operational")
+
+# ==========================================================
+# SaaS DASHBOARD HEADER
+# ==========================================================
+
+st.markdown("""
+<div class='saas-card'>
+<h2>PASSAGE AI Clinical Platform</h2>
+<p>AI-powered Cholangiocarcinoma Risk Stratification & Healthspan Analytics</p>
+</div>
+""", unsafe_allow_html=True)
+
+# ==========================================================
+# SaaS KPI OVERVIEW
+# ==========================================================
+
+records = session.query(Assessment).all()
+
+if len(records) > 0:
+
+    df = pd.DataFrame([{
+        "age": r.age,
+        "risk": r.cca_risk_level,
+        "healthspan": r.healthspan_index
+    } for r in records])
+
+    total_patients = len(df)
+    high_risk = len(df[df["risk"]=="High Risk"])
+    avg_healthspan = round(df["healthspan"].mean(),2)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown(f"""
+        <div class='saas-card'>
+        <div class='big-number'>{total_patients}</div>
+        <div class='small-label'>Total Patients</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f"""
+        <div class='saas-card'>
+        <div class='big-number'>{high_risk}</div>
+        <div class='small-label'>High Risk Cases</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown(f"""
+        <div class='saas-card'>
+        <div class='big-number'>{avg_healthspan}</div>
+        <div class='small-label'>Avg Healthspan Index</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ==========================================================
+# ENTERPRISE ANALYTICS (LOCK FEATURE)
+# ==========================================================
+
+st.markdown("---")
+st.subheader("Advanced AI Analytics")
+
+if subscription == "Starter (Free)":
+    st.warning("Upgrade to Professional to unlock advanced analytics.")
+
+elif subscription == "Professional":
+
+    st.info("Professional Tier Enabled")
+
+    if len(records) >= 5:
+        df = pd.DataFrame([{
+            "age": r.age,
+            "raw_fish": int(r.raw_fish),
+            "lft_abnormal": int(r.lft_abnormal),
+            "red_flags": r.red_flags,
+            "healthspan": r.healthspan_index,
+            "target": 1 if r.cca_risk_level=="High Risk" else 0
+        } for r in records])
+
+        X = df[["age","raw_fish","lft_abnormal","red_flags","healthspan"]]
+        y = df["target"]
+
+        model = LogisticRegression()
+        model.fit(X,y)
+
+        y_prob = model.predict_proba(X)[:,1]
+        confidence = round(np.mean(y_prob)*100,1)
+
+        st.metric("AI Model Confidence (%)", confidence)
+
+elif subscription == "Enterprise":
+
+    st.success("Enterprise AI Suite Activated")
+
+    if len(records) >= 5:
+        df = pd.DataFrame([{
+            "age": r.age,
+            "raw_fish": int(r.raw_fish),
+            "lft_abnormal": int(r.lft_abnormal),
+            "red_flags": r.red_flags,
+            "healthspan": r.healthspan_index,
+            "target": 1 if r.cca_risk_level=="High Risk" else 0,
+            "date": r.created_at
+        } for r in records])
+
+        X = df[["age","raw_fish","lft_abnormal","red_flags","healthspan"]]
+        y = df["target"]
+
+        model = LogisticRegression()
+        model.fit(X,y)
+
+        y_prob = model.predict_proba(X)[:,1]
+        fpr,tpr,_ = roc_curve(y,y_prob)
+        roc_auc = round(auc(fpr,tpr),3)
+
+        st.metric("Model AUC", roc_auc)
+        st.metric("AI Confidence (%)", round(np.mean(y_prob)*100,1))
+
+        st.line_chart(df.groupby(pd.to_datetime(df["date"]).dt.date)["target"].mean())
+
+# ==========================================================
+# REVENUE SIMULATION (Business View)
+# ==========================================================
+
+st.markdown("---")
+st.subheader("Projected Annual Revenue (Simulation)")
+
+hospital_count = st.slider("Number of Institutional Clients",1,100,10)
+
+if subscription == "Professional":
+    revenue = hospital_count * 60000
+elif subscription == "Enterprise":
+    revenue = hospital_count * 120000
+else:
+    revenue = 0
+
+st.metric("Estimated Annual Revenue (THB)", f"{revenue:,.0f}")
+
+# ==========================================================
+# PLATFORM FOOTER
+# ==========================================================
+
+st.markdown("""
+<div class='footer'>
+PASSAGE AI Platform | Faculty of Medicine, Khon Kaen University<br>
+Digital Preventive Oncology & AI Research Initiative<br>
+Prototype SaaS Demonstration Version
+</div>
+""", unsafe_allow_html=True)
