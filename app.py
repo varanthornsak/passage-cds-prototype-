@@ -21,7 +21,6 @@ st.set_page_config(page_title="PASSAGE  | KKU", layout="wide")
 st.markdown("""
 # PASSAGE Clinical Decision Support System  
 ### Faculty of Medicine, Khon Kaen University  
-Digital Health Innovation & Preventive Oncology Research Unit
 ---
 """)
 
