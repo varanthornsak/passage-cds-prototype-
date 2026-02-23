@@ -875,17 +875,20 @@ if len(records_ext) >= 5:
         mime="text/csv"
     )
 
-    # ==============================
-    # Compliance Footer
-    # ==============================
-    st.markdown("---")
-    st.caption("""
-    PASSAGE AI Clinical Module v3.2  
-    Internal Validation Cohort  
-    Prototype Decision Support System - Not for standalone diagnostic use  
-    PDPA-oriented data architecture  
-    """)
+# ==========================================================
+# PLATFORM FOOTER
+# ==========================================================
 
+st.markdown("""
+<div class='footer'>
+PASSAGE AI Platform | Faculty of Medicine, Khon Kaen University<br>
+Digital Preventive Oncology & AI Research Initiative<br>
+Prototype SaaS Demonstration Version
+</div>
+""", unsafe_allow_html=True)
+
+# Logic block ต้องอยู่นอก markdown
+if len(data) >= 5:
+    run_ai_module()
 else:
     st.info("Advanced AI module activates when ≥ 5 records are available.")
-""", unsafe_allow_html=True)
