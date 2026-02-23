@@ -881,7 +881,7 @@ if len(records_ext) >= 5:
     st.caption("""
     PASSAGE AI Clinical Module v3.2  
     Internal Validation Cohort  
-    Prototype Decision Support System – Not for standalone diagnostic use  
+    Prototype Decision Support System - Not for standalone diagnostic use  
     PDPA-oriented data architecture  
     """)
 
