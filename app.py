@@ -887,15 +887,20 @@ Prototype SaaS Demonstration Version
 </div>
 """, unsafe_allow_html=True)
 
-# Logic block ต้องอยู่นอก markdown
-if "data" in st.session_state:
+# ==========================================================
+# AI MODULE ACTIVATION LOGIC
+# ==========================================================
+
+if "data" in st.session_state and st.session_state["data"] is not None:
 
     data = st.session_state["data"]
 
-    if len(data) >= 5:
-        run_ai_module()
-    else:
-        st.info("Advanced AI module activates when ≥ 5 records are available.")
-
+    try:
+        if len(data) >= 5:
+            run_ai_module()
+        else:
+            st.info("Advanced AI module activates when ≥ 5 records are available.")
+    except TypeError:
+        st.warning("Dataset format is invalid.")
 else:
     st.info("No dataset loaded.")
