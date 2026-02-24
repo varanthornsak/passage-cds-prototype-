@@ -888,7 +888,14 @@ Prototype SaaS Demonstration Version
 """, unsafe_allow_html=True)
 
 # Logic block ต้องอยู่นอก markdown
-if len(data) >= 5:
-    run_ai_module()
+if "data" in st.session_state:
+
+    data = st.session_state["data"]
+
+    if len(data) >= 5:
+        run_ai_module()
+    else:
+        st.info("Advanced AI module activates when ≥ 5 records are available.")
+
 else:
-    st.info("Advanced AI module activates when ≥ 5 records are available.")
+    st.info("No dataset loaded.")
