@@ -111,13 +111,57 @@ st.sidebar.success(f"{user.email} ({user.role})")
 # RISK ENGINE
 # ==========================================================
 
-def calculate_risk(age, red_flags, ca19_9):
-    score = age * 0.03 + red_flags * 2 + (3 if ca19_9 > 100 else 0)
-    if score >= 10:
-        return "High Risk"
+def calculate_risk_protocol(
+    age,
+    raw_fish,
+    psc,
+    abnormal_lft,
+    red_flags,
+    ca19_9,
+    alp,
+    bilirubin,
+    us_dilation,
+    us_mass
+):
+
+    score = 0
+
+    # Epidemiologic risk
+    if age >= 40:
+        score += 1
+    if raw_fish:
+        score += 2
+    if psc:
+        score += 3
+
+    # Clinical signs
+    score += red_flags * 2
+
+    # Lab abnormalities
+    if abnormal_lft:
+        score += 2
+    if ca19_9 > 37:
+        score += 2
+    if ca19_9 > 100:
+        score += 3
+    if alp > 147:
+        score += 1
+    if bilirubin > 1.2:
+        score += 1
+
+    # Imaging
+    if us_dilation:
+        score += 3
+    if us_mass:
+        score += 5
+
+    # Risk stratification
+    if score >= 12:
+        return "High Suspicion"
     elif score >= 6:
-        return "Moderate Risk"
-    return "Low Risk"
+        return "Intermediate Risk"
+    else:
+        return "Low Risk"
 
 # ==========================================================
 # MENU
@@ -125,28 +169,61 @@ def calculate_risk(age, red_flags, ca19_9):
 
 menu = st.sidebar.selectbox(
     "Navigation",
-    ["New Screening", "Recall List", "Dashboard"]
+    ["New Screening", "Recall List", "Dashboard", "Clinical Protocol Guide"]
 )
 
 # ==========================================================
-# NEW SCREENING
+# NEW SCREENING – PROTOCOL VERSION
 # ==========================================================
 
 if menu == "New Screening":
 
-    st.header("New CCA Screening")
+    st.header("CCA Screening (Protocol-Based)")
 
-    patient_name = st.text_input("Patient Name")
-    age = st.number_input("Age", 20, 100)
-    red_flags = st.slider("Red Flag Symptoms", 0, 5)
-    ca19_9 = st.number_input("CA19-9", 0.0)
+    col1, col2 = st.columns(2)
 
-    if st.button("Evaluate"):
+    with col1:
+        patient_name = st.text_input("Patient Name")
+        age = st.number_input("Age", 20, 100)
 
-        risk = calculate_risk(age, red_flags, ca19_9)
+        st.subheader("Epidemiologic Risk")
+        raw_fish = st.checkbox("History of Raw Fish Consumption")
+        psc = st.checkbox("Primary Sclerosing Cholangitis (PSC)")
+        abnormal_lft = st.checkbox("Abnormal Liver Function Test")
+        red_flags = st.slider(
+            "Red Flag Symptoms (0–5)",
+            0, 5,
+            help="Jaundice, Weight loss, RUQ pain, Anorexia, Cholangitis"
+        )
 
+    with col2:
+        st.subheader("Tumor Markers")
+        ca19_9 = st.number_input("CA19-9 (U/mL)", 0.0)
+        alp = st.number_input("ALP (U/L)", 0.0)
+        bilirubin = st.number_input("Total Bilirubin (mg/dL)", 0.0)
+
+        st.subheader("Ultrasound Findings")
+        us_dilation = st.checkbox("Bile Duct Dilation")
+        us_mass = st.checkbox("Liver Mass Detected")
+
+    if st.button("Evaluate Risk"):
+
+        risk = calculate_risk_protocol(
+            age,
+            raw_fish,
+            psc,
+            abnormal_lft,
+            red_flags,
+            ca19_9,
+            alp,
+            bilirubin,
+            us_dilation,
+            us_mass
+        )
+
+        # Follow-up scheduling
         followup = None
-        if risk == "Moderate Risk":
+        if risk == "Intermediate Risk":
             followup = datetime.utcnow() + timedelta(days=90)
         elif risk == "Low Risk":
             followup = datetime.utcnow() + timedelta(days=365)
@@ -163,30 +240,45 @@ if menu == "New Screening":
         session.add(assessment)
         session.add(AuditLog(
             user_email=user.email,
-            action=f"Created assessment for {patient_name}"
+            action=f"Protocol screening for {patient_name}"
         ))
         session.commit()
 
-        if risk == "High Risk":
-            st.error("High Risk – Urgent referral required")
-        elif risk == "Moderate Risk":
-            st.warning("Moderate Risk – Ultrasound within 3 months")
-        else:
-            st.success("Low Risk – Routine follow-up")
+        st.markdown("---")
 
-        # PDF Referral
-        if risk == "High Risk":
+        if risk == "High Suspicion":
+            st.error("High Suspicion of CCA")
+            st.write("### Recommended Action:")
+            st.write("• Urgent hepatobiliary referral")
+            st.write("• Contrast-enhanced CT or MRI")
+            st.write("• Multidisciplinary tumor board evaluation")
+
+        elif risk == "Intermediate Risk":
+            st.warning("Intermediate Risk")
+            st.write("### Recommended Action:")
+            st.write("• Ultrasound within 3 months")
+            st.write("• Repeat CA19-9")
+            st.write("• Monitor liver enzymes")
+
+        else:
+            st.success("Low Risk")
+            st.write("### Recommended Action:")
+            st.write("• Annual surveillance")
+            st.write("• Lifestyle modification")
+
+        # PDF Referral for High Suspicion
+        if risk == "High Suspicion":
 
             temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-            doc = SimpleDocTemplate(temp.name, pagesize=A4)
+            doc = SimpleDocTemplate(temp.name)
             styles = getSampleStyleSheet()
             elements = []
 
-            elements.append(Paragraph("CCA Referral Letter", styles["Title"]))
+            elements.append(Paragraph("Cholangiocarcinoma Referral Letter", styles["Title"]))
             elements.append(Spacer(1, 0.3 * inch))
             elements.append(Paragraph(f"Patient: {patient_name}", styles["Normal"]))
             elements.append(Paragraph(f"Age: {age}", styles["Normal"]))
-            elements.append(Paragraph("Risk Level: HIGH RISK", styles["Normal"]))
+            elements.append(Paragraph("Risk Classification: HIGH SUSPICION", styles["Normal"]))
             elements.append(Paragraph("Recommendation: Urgent hepatobiliary evaluation.", styles["Normal"]))
 
             doc.build(elements)
@@ -198,6 +290,8 @@ if menu == "New Screening":
                     file_name="CCA_Referral.pdf",
                     mime="application/pdf"
                 )
+
+        st.caption("This tool supports clinical decision-making and does not replace physician judgment.")
 
 # ==========================================================
 # RECALL LIST
@@ -265,3 +359,45 @@ if user.role == "admin":
 
 st.markdown("---")
 st.caption("PASSAGE Hospital Stable Edition")
+if menu == "Clinical Protocol Guide":
+
+    st.header("CCA Screening Protocol Reference")
+
+    st.subheader("Tumor Marker Reference")
+
+    marker_table = pd.DataFrame({
+        "Marker": ["CA19-9", "ALP", "Total Bilirubin"],
+        "Normal Range": ["< 37 U/mL", "44–147 U/L", "0.1–1.2 mg/dL"],
+        "Clinical Significance": [
+            "Elevated in CCA; >100 U/mL increases suspicion",
+            "Elevated in biliary obstruction",
+            "Elevated in obstructive jaundice"
+        ]
+    })
+
+    st.table(marker_table)
+
+    st.subheader("Imaging Red Flags")
+
+    imaging_table = pd.DataFrame({
+        "Finding": ["Bile Duct Dilation", "Liver Mass"],
+        "Interpretation": [
+            "Suggests obstructive pathology",
+            "High suspicion for malignancy"
+        ]
+    })
+
+    st.table(imaging_table)
+
+    st.subheader("Risk Classification Summary")
+
+    risk_table = pd.DataFrame({
+        "Category": ["Low Risk", "Intermediate Risk", "High Suspicion"],
+        "Recommended Action": [
+            "Annual surveillance",
+            "Ultrasound within 3 months",
+            "Urgent CT/MRI + Specialist referral"
+        ]
+    })
+
+    st.table(risk_table)
