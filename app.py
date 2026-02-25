@@ -6,15 +6,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-try:
-    import shap
-    SHAP_AVAILABLE = True
-except ImportError:
-    SHAP_AVAILABLE = False
-import seaborn as sns
-import matplotlib.pyplot as plt
-import io
-
 from sqlalchemy import create_engine, Column, Integer, Float, String, Boolean, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
@@ -237,22 +228,6 @@ if menu == "Population Dashboard":
         fig_cm = plt.figure()
         sns.heatmap(cm, annot=True, fmt="d")
         st.pyplot(fig_cm)
-# =============================
-# SHAP
-# =============================
-if SHAP_AVAILABLE:
-    st.subheader("Model Explainability (SHAP)")
-
-    explainer = shap.LinearExplainer(model, X_train)
-    shap_values = explainer.shap_values(X_test)
-
-    fig_shap = plt.figure()
-    shap.summary_plot(shap_values, X_test, show=False)
-    st.pyplot(fig_shap)
-
-else:
-    st.warning("SHAP not installed. Explainability module disabled.")
-
 
 # =============================
 # RECALL LIST (ต้องไม่ indent)
