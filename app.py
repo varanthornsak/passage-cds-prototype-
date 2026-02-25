@@ -1,6 +1,6 @@
 # ==========================================================
-# PASSAGE Hospital Edition
-# Role-Based | Recall | PDF | Audit | PostgreSQL
+# PASSAGE Hospital Stable Edition
+# Safe Version (No Secrets Crash)
 # ==========================================================
 
 import streamlit as st
@@ -21,7 +21,9 @@ import bcrypt
 
 st.set_page_config(page_title="PASSAGE Hospital Edition", layout="wide")
 
-DATABASE_URL = st.secrets["DATABASE_URL"]
+# Safe DB fallback (ไม่พังถ้าไม่มี secrets)
+DATABASE_URL = st.secrets.get("DATABASE_URL", "sqlite:///passage_local.db")
+
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -59,7 +61,20 @@ class AuditLog(Base):
 Base.metadata.create_all(engine)
 
 # ==========================================================
-# LOGIN SYSTEM
+# INITIAL ADMIN (สร้างครั้งแรก)
+# ==========================================================
+
+def create_default_admin():
+    if session.query(User).count() == 0:
+        hashed = bcrypt.hashpw("admin123".encode(), bcrypt.gensalt()).decode()
+        admin = User(email="admin@passage.local", password=hashed, role="admin")
+        session.add(admin)
+        session.commit()
+
+create_default_admin()
+
+# ==========================================================
+# LOGIN
 # ==========================================================
 
 def authenticate(email, password):
@@ -72,7 +87,6 @@ if "user" not in st.session_state:
     st.session_state.user = None
 
 if st.session_state.user is None:
-
     st.title("PASSAGE Login")
 
     email = st.text_input("Email")
@@ -106,7 +120,7 @@ def calculate_risk(age, red_flags, ca19_9):
     return "Low Risk"
 
 # ==========================================================
-# NAVIGATION
+# MENU
 # ==========================================================
 
 menu = st.sidebar.selectbox(
@@ -147,18 +161,20 @@ if menu == "New Screening":
         )
 
         session.add(assessment)
-        session.add(AuditLog(user_email=user.email,
-                             action=f"New assessment for {patient_name}"))
+        session.add(AuditLog(
+            user_email=user.email,
+            action=f"Created assessment for {patient_name}"
+        ))
         session.commit()
 
         if risk == "High Risk":
-            st.error("Urgent referral required")
+            st.error("High Risk – Urgent referral required")
         elif risk == "Moderate Risk":
-            st.warning("Ultrasound within 3 months")
+            st.warning("Moderate Risk – Ultrasound within 3 months")
         else:
-            st.success("Routine follow-up")
+            st.success("Low Risk – Routine follow-up")
 
-        # PDF Referral (High Risk Only)
+        # PDF Referral
         if risk == "High Risk":
 
             temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
@@ -198,15 +214,14 @@ if menu == "Recall List":
         Assessment.followup_date <= today
     ).all()
 
-    if len(recalls) == 0:
-        st.success("No patients due for recall today")
+    if not recalls:
+        st.success("No patients due for recall")
     else:
         df = pd.DataFrame([{
             "Patient": r.patient_name,
             "Risk": r.risk_level,
             "Follow-up Date": r.followup_date
         } for r in recalls])
-
         st.dataframe(df)
 
 # ==========================================================
@@ -217,12 +232,10 @@ if menu == "Dashboard":
 
     records = session.query(Assessment).all()
 
-    if len(records) == 0:
-        st.info("No data available")
+    if not records:
+        st.info("No screening data")
     else:
-        df = pd.DataFrame([{
-            "risk": r.risk_level
-        } for r in records])
+        df = pd.DataFrame([{"risk": r.risk_level} for r in records])
 
         col1, col2 = st.columns(2)
         col1.metric("Total Screenings", len(df))
@@ -232,7 +245,7 @@ if menu == "Dashboard":
         st.bar_chart(df["risk"].value_counts())
 
 # ==========================================================
-# AUDIT VIEW (Admin Only)
+# AUDIT LOG (Admin only)
 # ==========================================================
 
 if user.role == "admin":
@@ -251,4 +264,4 @@ if user.role == "admin":
     st.dataframe(df_logs)
 
 st.markdown("---")
-st.caption("PASSAGE Hospital Edition | Secure Clinical Platform")
+st.caption("PASSAGE Hospital Stable Edition")
