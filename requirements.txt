@@ -11,3 +11,4 @@ fpdf
 matplotlib
 reportlab
 seaborn
+StratifiedKFold
