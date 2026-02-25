@@ -1,15 +1,6 @@
-plotly
-statsmodels
-psycopg2-binary
-cryptography
-fpdf
-reportlab
-StratifiedKFold
 streamlit
 pandas
 numpy
 scikit-learn
 matplotlib
-seaborn
 sqlalchemy
-shap
