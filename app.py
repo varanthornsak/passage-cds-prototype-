@@ -6,7 +6,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import shap
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
 import seaborn as sns
 import matplotlib.pyplot as plt
 import io
@@ -235,12 +239,15 @@ if menu == "Population Dashboard":
         st.pyplot(fig_cm)
 
         # SHAP
+        if SHAP_AVAILABLE:
         st.subheader("Model Explainability (SHAP)")
         explainer = shap.LinearExplainer(model, X_train)
         shap_values = explainer.shap_values(X_test)
         fig_shap = plt.figure()
         shap.summary_plot(shap_values, X_test, show=False)
         st.pyplot(fig_shap)
+else:
+    st.warning("SHAP not installed. Explainability module disabled.")
 
         # Recall
         st.subheader("High Risk Recall List (Prob > 0.7)")
