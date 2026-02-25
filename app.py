@@ -240,7 +240,7 @@ if menu == "Population Dashboard":
 
         # SHAP
         if SHAP_AVAILABLE:
-        st.subheader("Model Explainability (SHAP)")
+            st.subheader("Model Explainability (SHAP)")
         explainer = shap.LinearExplainer(model, X_train)
         shap_values = explainer.shap_values(X_test)
         fig_shap = plt.figure()
