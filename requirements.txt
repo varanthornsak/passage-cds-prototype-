@@ -12,3 +12,4 @@ matplotlib
 reportlab
 seaborn
 StratifiedKFold
+shap
