@@ -237,22 +237,29 @@ if menu == "Population Dashboard":
         fig_cm = plt.figure()
         sns.heatmap(cm, annot=True, fmt="d")
         st.pyplot(fig_cm)
+# =============================
+# SHAP
+# =============================
+if SHAP_AVAILABLE:
+    st.subheader("Model Explainability (SHAP)")
 
-        # SHAP
-        if SHAP_AVAILABLE:
-            st.subheader("Model Explainability (SHAP)")
-        explainer = shap.LinearExplainer(model, X_train)
-        shap_values = explainer.shap_values(X_test)
-        fig_shap = plt.figure()
-        shap.summary_plot(shap_values, X_test, show=False)
-        st.pyplot(fig_shap)
+    explainer = shap.LinearExplainer(model, X_train)
+    shap_values = explainer.shap_values(X_test)
+
+    fig_shap = plt.figure()
+    shap.summary_plot(shap_values, X_test, show=False)
+    st.pyplot(fig_shap)
+
 else:
     st.warning("SHAP not installed. Explainability module disabled.")
 
-        # Recall
-        st.subheader("High Risk Recall List (Prob > 0.7)")
-        recall_df = X_test[y_prob > 0.7]
-        st.dataframe(recall_df)
+
+# =============================
+# RECALL LIST (ต้องไม่ indent)
+# =============================
+st.subheader("High Risk Recall List (Prob > 0.7)")
+recall_df = X_test[y_prob > 0.7]
+st.dataframe(recall_df)
 
 # ==========================================================
 # EXECUTIVE OVERVIEW
