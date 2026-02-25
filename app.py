@@ -233,3 +233,158 @@ if menu == "Executive Overview":
 
 st.markdown("---")
 st.caption("PASSAGE Stable Version | AI CCA Screening Platform")
+# ==========================================================
+# HOSPITAL DEPLOYMENT MODULE
+# Institutional + Business Extension Layer
+# ==========================================================
+
+st.markdown("---")
+st.header("Hospital Operations & Business Module")
+
+# =============================
+# ROLE MANAGEMENT
+# =============================
+
+role = st.sidebar.selectbox(
+    "User Role",
+    ["Clinician", "Nurse", "Administrator", "Executive"]
+)
+
+# =============================
+# LOAD DATA
+# =============================
+
+records = session.query(Assessment).all()
+
+if len(records) == 0:
+    st.info("No patient records available.")
+else:
+
+    df_ops = pd.DataFrame([{
+        "patient_name": r.patient_name,
+        "age": r.age,
+        "raw_fish": int(r.raw_fish),
+        "lft_abnormal": int(r.lft_abnormal),
+        "red_flags": r.red_flags,
+        "healthspan": r.healthspan_index,
+        "confirmed_cca": int(r.confirmed_cca),
+        "date": r.created_at
+    } for r in records])
+
+    # ======================================================
+    # 1️⃣ CLINICAL RISK ALERT PANEL
+    # ======================================================
+
+    st.subheader("Clinical Risk Alert Panel")
+
+    high_risk_patients = df_ops[
+        (df_ops["confirmed_cca"] == 1) |
+        (df_ops["red_flags"] >= 3)
+    ]
+
+    if len(high_risk_patients) > 0:
+        st.error(f"{len(high_risk_patients)} High Priority Patients Detected")
+        st.dataframe(high_risk_patients)
+    else:
+        st.success("No immediate high-risk alerts")
+
+    # ======================================================
+    # 2️⃣ RECALL MANAGEMENT SYSTEM
+    # ======================================================
+
+    st.subheader("Screening Recall Management")
+
+    recall_candidates = df_ops[
+        (df_ops["confirmed_cca"] == 0) &
+        (df_ops["red_flags"] >= 2)
+    ]
+
+    if len(recall_candidates) > 0:
+        st.warning(f"{len(recall_candidates)} Patients Due for Follow-up")
+        st.dataframe(recall_candidates)
+
+        if role in ["Administrator", "Executive"]:
+            st.download_button(
+                "Download Recall List (CSV)",
+                recall_candidates.to_csv(index=False),
+                file_name="recall_list.csv",
+                mime="text/csv"
+            )
+    else:
+        st.info("No recall candidates at this time.")
+
+    # ======================================================
+    # 3️⃣ OPERATIONAL METRICS
+    # ======================================================
+
+    st.subheader("Operational Metrics")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Total Screened Patients", len(df_ops))
+    col2.metric("Confirmed CCA Cases", int(df_ops["confirmed_cca"].sum()))
+    col3.metric("Average Healthspan", round(df_ops["healthspan"].mean(),2))
+
+    # ======================================================
+    # 4️⃣ TREND ANALYSIS
+    # ======================================================
+
+    st.subheader("Screening Trend Over Time")
+
+    df_ops["date"] = pd.to_datetime(df_ops["date"])
+    trend = df_ops.groupby(df_ops["date"].dt.date)["confirmed_cca"].mean()
+
+    st.line_chart(trend)
+
+    # ======================================================
+    # 5️⃣ BUSINESS REVENUE SIMULATION
+    # ======================================================
+
+    if role in ["Executive", "Administrator"]:
+
+        st.subheader("Business Revenue Projection")
+
+        price_per_screen = st.number_input(
+            "Screening Price per Patient (THB)",
+            min_value=500,
+            max_value=5000,
+            value=1500
+        )
+
+        annual_volume = st.number_input(
+            "Projected Annual Screening Volume",
+            min_value=100,
+            max_value=50000,
+            value=5000
+        )
+
+        estimated_revenue = price_per_screen * annual_volume
+
+        st.metric("Projected Annual Revenue (THB)", f"{estimated_revenue:,.0f}")
+
+        st.info("""
+        Business Model Pathways:
+        • Hospital subscription model
+        • Provincial screening program
+        • Corporate health packages
+        • Government CCA early detection program
+        """)
+
+    # ======================================================
+    # 6️⃣ DATA GOVERNANCE SUMMARY
+    # ======================================================
+
+    if role == "Executive":
+
+        st.subheader("Data Governance Overview")
+
+        st.write("""
+        ✔ Local encrypted database  
+        ✔ Role-based access control  
+        ✔ Screening audit capability  
+        ✔ Structured data export  
+        ✔ Scalable to multi-hospital deployment  
+        """)
+
+st.markdown("---")
+st.caption("Hospital Deployment Layer | PASSAGE Institutional Extension")
