@@ -1,77 +1,109 @@
 # ==========================================================
-# PASSAGE – Clinical CCA Screening Platform
-# Institutional Professional Version
+# PASSAGE Hospital Edition
+# Role-Based | Recall | PDF | Audit | PostgreSQL
 # ==========================================================
 
 import streamlit as st
 import pandas as pd
-import numpy as np
-from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, Float, String, Boolean, DateTime
+from datetime import datetime, timedelta
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import inch
+import tempfile
+import bcrypt
 
 # ==========================================================
 # CONFIG
 # ==========================================================
 
-st.set_page_config(
-    page_title="PASSAGE Clinical Platform",
-    layout="wide"
-)
+st.set_page_config(page_title="PASSAGE Hospital Edition", layout="wide")
 
-st.title("PASSAGE – Cholangiocarcinoma (CCA) Screening Platform")
-st.caption("Clinical Decision Support System | Institutional Version")
-
-# ==========================================================
-# DATABASE
-# ==========================================================
-
-DATABASE_URL = "sqlite:///passage_clinical.db"
+DATABASE_URL = st.secrets["DATABASE_URL"]
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 session = Session()
 Base = declarative_base()
 
+# ==========================================================
+# MODELS
+# ==========================================================
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True)
+    password = Column(String)
+    role = Column(String)
+
 class Assessment(Base):
     __tablename__ = "assessments"
-
     id = Column(Integer, primary_key=True)
     patient_name = Column(String)
     age = Column(Integer)
-
-    raw_fish = Column(Boolean)
-    lft_abnormal = Column(Boolean)
     red_flags = Column(Integer)
-
     ca19_9 = Column(Float)
-    cea = Column(Float)
-    alp = Column(Float)
-    bilirubin = Column(Float)
-
     risk_level = Column(String)
+    followup_date = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id = Column(Integer, primary_key=True)
+    user_email = Column(String)
+    action = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
 Base.metadata.create_all(engine)
+
+# ==========================================================
+# LOGIN SYSTEM
+# ==========================================================
+
+def authenticate(email, password):
+    user = session.query(User).filter_by(email=email).first()
+    if user and bcrypt.checkpw(password.encode(), user.password.encode()):
+        return user
+    return None
+
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if st.session_state.user is None:
+
+    st.title("PASSAGE Login")
+
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        user = authenticate(email, password)
+        if user:
+            st.session_state.user = user
+            session.add(AuditLog(user_email=email, action="Login"))
+            session.commit()
+            st.rerun()
+        else:
+            st.error("Invalid credentials")
+
+    st.stop()
+
+user = st.session_state.user
+st.sidebar.success(f"{user.email} ({user.role})")
 
 # ==========================================================
 # RISK ENGINE
 # ==========================================================
 
-def calculate_risk(age, raw_fish, lft_abnormal, red_flags, ca19_9):
-
-    score = 0
-    score += age * 0.03
-    score += 2 if raw_fish else 0
-    score += 2 if lft_abnormal else 0
-    score += red_flags * 1.5
-    score += 3 if ca19_9 > 100 else 0
-
+def calculate_risk(age, red_flags, ca19_9):
+    score = age * 0.03 + red_flags * 2 + (3 if ca19_9 > 100 else 0)
     if score >= 10:
         return "High Risk"
     elif score >= 6:
         return "Moderate Risk"
-    else:
-        return "Low Risk"
+    return "Low Risk"
 
 # ==========================================================
 # NAVIGATION
@@ -79,7 +111,7 @@ def calculate_risk(age, raw_fish, lft_abnormal, red_flags, ca19_9):
 
 menu = st.sidebar.selectbox(
     "Navigation",
-    ["New Screening", "Dashboard", "Clinical Interpretation Guide"]
+    ["New Screening", "Recall List", "Dashboard"]
 )
 
 # ==========================================================
@@ -88,61 +120,94 @@ menu = st.sidebar.selectbox(
 
 if menu == "New Screening":
 
-    st.header("New CCA Risk Assessment")
+    st.header("New CCA Screening")
 
-    with st.form("screening_form"):
+    patient_name = st.text_input("Patient Name")
+    age = st.number_input("Age", 20, 100)
+    red_flags = st.slider("Red Flag Symptoms", 0, 5)
+    ca19_9 = st.number_input("CA19-9", 0.0)
 
-        col1, col2 = st.columns(2)
+    if st.button("Evaluate"):
 
-        with col1:
-            patient_name = st.text_input("Patient Name")
-            age = st.number_input("Age", 20, 100)
-            raw_fish = st.checkbox("History of Raw Fish Consumption")
-            lft_abnormal = st.checkbox("Abnormal Liver Function Test")
-            red_flags = st.slider(
-                "Red Flag Symptoms (0–5)",
-                0, 5,
-                help="Jaundice, Weight loss, RUQ pain, Anorexia, Cholangitis"
-            )
+        risk = calculate_risk(age, red_flags, ca19_9)
 
-        with col2:
-            ca19_9 = st.number_input("CA19-9 (U/mL)", 0.0)
-            cea = st.number_input("CEA (ng/mL)", 0.0)
-            alp = st.number_input("ALP (U/L)", 0.0)
-            bilirubin = st.number_input("Total Bilirubin (mg/dL)", 0.0)
+        followup = None
+        if risk == "Moderate Risk":
+            followup = datetime.utcnow() + timedelta(days=90)
+        elif risk == "Low Risk":
+            followup = datetime.utcnow() + timedelta(days=365)
 
-        submit = st.form_submit_button("Evaluate Risk")
+        assessment = Assessment(
+            patient_name=patient_name,
+            age=age,
+            red_flags=red_flags,
+            ca19_9=ca19_9,
+            risk_level=risk,
+            followup_date=followup
+        )
 
-        if submit:
+        session.add(assessment)
+        session.add(AuditLog(user_email=user.email,
+                             action=f"New assessment for {patient_name}"))
+        session.commit()
 
-            risk_level = calculate_risk(
-                age, raw_fish, lft_abnormal, red_flags, ca19_9
-            )
+        if risk == "High Risk":
+            st.error("Urgent referral required")
+        elif risk == "Moderate Risk":
+            st.warning("Ultrasound within 3 months")
+        else:
+            st.success("Routine follow-up")
 
-            record = Assessment(
-                patient_name=patient_name,
-                age=age,
-                raw_fish=raw_fish,
-                lft_abnormal=lft_abnormal,
-                red_flags=red_flags,
-                ca19_9=ca19_9,
-                cea=cea,
-                alp=alp,
-                bilirubin=bilirubin,
-                risk_level=risk_level
-            )
+        # PDF Referral (High Risk Only)
+        if risk == "High Risk":
 
-            session.add(record)
-            session.commit()
+            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            doc = SimpleDocTemplate(temp.name, pagesize=A4)
+            styles = getSampleStyleSheet()
+            elements = []
 
-            st.success("Assessment Saved")
+            elements.append(Paragraph("CCA Referral Letter", styles["Title"]))
+            elements.append(Spacer(1, 0.3 * inch))
+            elements.append(Paragraph(f"Patient: {patient_name}", styles["Normal"]))
+            elements.append(Paragraph(f"Age: {age}", styles["Normal"]))
+            elements.append(Paragraph("Risk Level: HIGH RISK", styles["Normal"]))
+            elements.append(Paragraph("Recommendation: Urgent hepatobiliary evaluation.", styles["Normal"]))
 
-            if risk_level == "High Risk":
-                st.error("High Risk – Recommend urgent hepatobiliary evaluation")
-            elif risk_level == "Moderate Risk":
-                st.warning("Moderate Risk – Recommend ultrasound within 3 months")
-            else:
-                st.success("Low Risk – Routine annual follow-up")
+            doc.build(elements)
+
+            with open(temp.name, "rb") as f:
+                st.download_button(
+                    "Download Referral PDF",
+                    f,
+                    file_name="CCA_Referral.pdf",
+                    mime="application/pdf"
+                )
+
+# ==========================================================
+# RECALL LIST
+# ==========================================================
+
+if menu == "Recall List":
+
+    st.header("Recall Scheduler")
+
+    today = datetime.utcnow()
+
+    recalls = session.query(Assessment).filter(
+        Assessment.followup_date != None,
+        Assessment.followup_date <= today
+    ).all()
+
+    if len(recalls) == 0:
+        st.success("No patients due for recall today")
+    else:
+        df = pd.DataFrame([{
+            "Patient": r.patient_name,
+            "Risk": r.risk_level,
+            "Follow-up Date": r.followup_date
+        } for r in recalls])
+
+        st.dataframe(df)
 
 # ==========================================================
 # DASHBOARD
@@ -150,84 +215,40 @@ if menu == "New Screening":
 
 if menu == "Dashboard":
 
-    st.header("Institutional Dashboard")
-
     records = session.query(Assessment).all()
 
     if len(records) == 0:
-        st.info("No screening data available.")
+        st.info("No data available")
     else:
-
         df = pd.DataFrame([{
             "risk": r.risk_level
         } for r in records])
 
-        col1, col2, col3 = st.columns(3)
-
+        col1, col2 = st.columns(2)
         col1.metric("Total Screenings", len(df))
         col2.metric("High Risk %",
                     round((df["risk"]=="High Risk").mean()*100,1))
-        col3.metric("Moderate Risk %",
-                    round((df["risk"]=="Moderate Risk").mean()*100,1))
 
         st.bar_chart(df["risk"].value_counts())
 
 # ==========================================================
-# CLINICAL INTERPRETATION GUIDE
+# AUDIT VIEW (Admin Only)
 # ==========================================================
 
-if menu == "Clinical Interpretation Guide":
+if user.role == "admin":
 
-    st.header("Clinical Interpretation & Reference Guide")
+    st.markdown("---")
+    st.subheader("Audit Log")
 
-    st.subheader("Tumor Markers")
+    logs = session.query(AuditLog).all()
 
-    marker_table = pd.DataFrame({
-        "Marker": ["CA19-9", "CEA", "ALP", "Total Bilirubin"],
-        "Normal Range": ["< 37 U/mL", "< 5 ng/mL", "44–147 U/L", "0.1–1.2 mg/dL"],
-        "Interpretation": [
-            "Elevated in cholangiocarcinoma; >100 U/mL increases suspicion",
-            "Non-specific tumor marker; may elevate in GI malignancy",
-            "Elevated in biliary obstruction",
-            "Elevated in obstructive jaundice"
-        ]
-    })
+    df_logs = pd.DataFrame([{
+        "User": l.user_email,
+        "Action": l.action,
+        "Time": l.timestamp
+    } for l in logs])
 
-    st.table(marker_table)
-
-    st.subheader("Red Flag Symptoms")
-
-    symptom_table = pd.DataFrame({
-        "Symptom": [
-            "Jaundice",
-            "Unintentional Weight Loss",
-            "Right Upper Quadrant Pain",
-            "Anorexia",
-            "Recurrent Cholangitis"
-        ],
-        "Clinical Concern": [
-            "Suggests biliary obstruction",
-            "Possible malignancy",
-            "Hepatobiliary pathology",
-            "Systemic disease indicator",
-            "Chronic biliary disease"
-        ]
-    })
-
-    st.table(symptom_table)
-
-    st.subheader("Risk Interpretation")
-
-    risk_table = pd.DataFrame({
-        "Risk Level": ["Low", "Moderate", "High"],
-        "Clinical Recommendation": [
-            "Routine follow-up annually",
-            "Ultrasound within 3 months",
-            "Urgent hepatobiliary referral"
-        ]
-    })
-
-    st.table(risk_table)
+    st.dataframe(df_logs)
 
 st.markdown("---")
-st.caption("PASSAGE Clinical Platform | Institutional-Ready Version")
+st.caption("PASSAGE Hospital Edition | Secure Clinical Platform")
