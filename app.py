@@ -338,27 +338,6 @@ if menu == "Dashboard":
 
         st.bar_chart(df["risk"].value_counts())
 
-# ==========================================================
-# AUDIT LOG (Admin only)
-# ==========================================================
-
-if user.role == "admin":
-
-    st.markdown("---")
-    st.subheader("Audit Log")
-
-    logs = session.query(AuditLog).all()
-
-    df_logs = pd.DataFrame([{
-        "User": l.user_email,
-        "Action": l.action,
-        "Time": l.timestamp
-    } for l in logs])
-
-    st.dataframe(df_logs)
-
-st.markdown("---")
-st.caption("PASSAGE Hospital Stable Edition")
 if menu == "Clinical Protocol Guide":
 
     st.header("CCA Screening Protocol Reference")
@@ -401,3 +380,24 @@ if menu == "Clinical Protocol Guide":
     })
 
     st.table(risk_table)
+# ==========================================================
+# AUDIT LOG (Admin only)
+# ==========================================================
+
+if user.role == "admin":
+
+    st.markdown("---")
+    st.subheader("Audit Log")
+
+    logs = session.query(AuditLog).all()
+
+    df_logs = pd.DataFrame([{
+        "User": l.user_email,
+        "Action": l.action,
+        "Time": l.timestamp
+    } for l in logs])
+
+    st.dataframe(df_logs)
+
+st.markdown("---")
+st.caption("PASSAGE Hospital Stable Edition")
