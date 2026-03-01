@@ -14,15 +14,16 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 import tempfile
 import bcrypt
-# ===== ML IMPORT (SAFE MODE) =====
+# ===== SAFE ML IMPORT =====
+ML_AVAILABLE = True
+
 try:
     import numpy as np
     import matplotlib.pyplot as plt
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import roc_curve, auc
     from sklearn.model_selection import train_test_split
-    ML_AVAILABLE = True
-except Exception:
+except Exception as e:
     ML_AVAILABLE = False
 # ==========================================================
 # CONFIG
