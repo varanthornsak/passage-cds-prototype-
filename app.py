@@ -199,7 +199,33 @@ def calculate_risk_protocol(
         return "Intermediate Risk"
     else:
         return "Low Risk"
+# ==========================================================
+# AUTO ML ENGINE (PASSAGE-CDS)
+# ==========================================================
 
+@st.cache_resource
+def train_ml_model():
+
+    records = session.query(Assessment).all()
+
+    # ต้องมีข้อมูลขั้นต่ำ
+    if len(records) < 5:
+        return None
+
+    df = pd.DataFrame([{
+        "age": r.age,
+        "red_flags": r.red_flags,
+        "ca19_9": r.ca19_9,
+        "target": 1 if r.risk_level == "High Suspicion" else 0
+    } for r in records])
+
+    X = df[["age", "red_flags", "ca19_9"]]
+    y = df["target"]
+
+    model = LogisticRegression()
+    model.fit(X, y)
+
+    return model
 # ==========================================================
 # MENU
 # ==========================================================
@@ -246,21 +272,41 @@ if menu == "New Screening":
     if st.button("Evaluate Risk"):
 
         risk = calculate_risk_protocol(
-            age,
-            raw_fish,
-            psc,
-            abnormal_lft,
-            red_flags,
-            ca19_9,
-            alp,
-            bilirubin,
-            us_dilation,
-            us_mass
-        )
-        # Example probability approximation (until live model integration)
-        probability = min(0.05 * red_flags + 0.002 * ca19_9 + age*0.002, 0.95)
-        st.metric("Estimated CCA Probability", f"{probability:.2f}")
+    age,
+    raw_fish,
+    psc,
+    abnormal_lft,
+    red_flags,
+    ca19_9,
+    alp,
+    bilirubin,
+    us_dilation,
+    us_mass
+)
 
+# =====================================
+# REAL ML PROBABILITY (AUTO MODEL)
+# =====================================
+model = train_ml_model()
+
+if model is not None:
+
+    X_new = pd.DataFrame([{
+        "age": age,
+        "red_flags": red_flags,
+        "ca19_9": ca19_9
+    }])
+
+    probability = model.predict_proba(X_new)[0][1]
+
+    st.metric(
+        "CCA Probability (ML Model)",
+        f"{probability:.2%}"
+    )
+
+else:
+    st.info("Model will activate after ≥5 patients.")
+        
         # Follow-up scheduling
         followup = None
         if risk == "Intermediate Risk":
@@ -405,6 +451,26 @@ if menu == "Dashboard":
         )
 
         st.bar_chart(df["risk"].value_counts())
+        st.markdown("---")
+        st.subheader("Research Dataset Export")
+        
+        export_df = pd.DataFrame([{
+            "patient": r.patient_name,
+            "age": r.age,
+            "red_flags": r.red_flags,
+            "ca19_9": r.ca19_9,
+            "risk": r.risk_level,
+            "created_at": r.created_at
+        } for r in records])
+        
+        csv = export_df.to_csv(index=False)
+        
+        st.download_button(
+            "Download Research Dataset (CSV)",
+            csv,
+            file_name="PASSAGE_CCA_dataset.csv",
+            mime="text/csv"
+)
 
 
 # ==========================================================
