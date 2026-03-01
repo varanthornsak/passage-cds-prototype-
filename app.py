@@ -304,7 +304,7 @@ if menu == "New Screening":
                 "No significant risk detected at this time."
         }
 
-st.info(interpret_map[risk])
+        st.info(interpret_map[risk])
 
         if risk == "High Suspicion":
             st.error("High Suspicion of CCA")
