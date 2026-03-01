@@ -20,7 +20,25 @@ import bcrypt
 # ==========================================================
 
 st.set_page_config(page_title="PASSAGE Hospital Edition", layout="wide")
+# ===== PROFESSIONAL HEADER =====
+st.markdown("""
+<style>
+.main-title {font-size:28px;font-weight:700;}
+.subtitle {color:gray;margin-bottom:10px;}
+</style>
+""", unsafe_allow_html=True)
 
+st.markdown("""
+<div class='main-title'>PASSAGE Clinical Decision Support System</div>
+<div class='subtitle'>
+Cholangiocarcinoma Risk Stratification Platform | Hospital Edition
+</div>
+<hr>
+""", unsafe_allow_html=True)
+
+st.info(
+"Clinical Decision Support Tool — Final diagnosis must be made by qualified physicians."
+)
 # Safe DB fallback (ไม่พังถ้าไม่มี secrets)
 DATABASE_URL = st.secrets.get("DATABASE_URL", "sqlite:///passage_local.db")
 
@@ -28,6 +46,26 @@ engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 session = Session()
 Base = declarative_base()
+st.markdown("""
+<style>
+.main-title {
+    font-size:28px;
+    font-weight:700;
+}
+.subtitle {
+    color:gray;
+    margin-bottom:10px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div class='main-title'>PASSAGE Clinical Decision Support System</div>
+<div class='subtitle'>
+Cholangiocarcinoma Risk Stratification Platform | Hospital Edition
+</div>
+<hr>
+""", unsafe_allow_html=True)
 
 # ==========================================================
 # MODELS
@@ -70,6 +108,9 @@ def create_default_admin():
         admin = User(email="admin@passage.local", password=hashed, role="admin")
         session.add(admin)
         session.commit()
+        st.caption(
+            f"Assessment recorded at {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
+        )
 
 create_default_admin()
 
@@ -106,6 +147,13 @@ if st.session_state.user is None:
 
 user = st.session_state.user
 st.sidebar.success(f"{user.email} ({user.role})")
+st.sidebar.markdown("---")
+st.sidebar.success("System Status: Operational")
+
+if "postgresql" in DATABASE_URL:
+    st.sidebar.caption("Database: PostgreSQL (Production)")
+else:
+    st.sidebar.caption("Database: Local Development Mode")
 
 # ==========================================================
 # RISK ENGINE
@@ -245,6 +293,18 @@ if menu == "New Screening":
         session.commit()
 
         st.markdown("---")
+        st.markdown("### Clinical Interpretation")
+
+        interpret_map = {
+            "High Suspicion":
+                "Findings strongly suggest possible cholangiocarcinoma. Immediate specialist referral recommended.",
+            "Intermediate Risk":
+                "Abnormal risk profile detected. Imaging surveillance advised.",
+            "Low Risk":
+                "No significant risk detected at this time."
+        }
+
+st.info(interpret_map[risk])
 
         if risk == "High Suspicion":
             st.error("High Suspicion of CCA")
@@ -323,6 +383,14 @@ if menu == "Recall List":
 # ==========================================================
 
 if menu == "Dashboard":
+    high = (df["risk"]=="High Suspicion").sum()
+    intermediate = (df["risk"]=="Intermediate Risk").sum()
+    low = (df["risk"]=="Low Risk").sum()
+    
+    c1,c2,c3 = st.columns(3)
+    c1.metric("High Suspicion Cases", high)
+    c2.metric("Intermediate Risk", intermediate)
+    c3.metric("Low Risk", low)
 
     records = session.query(Assessment).all()
 
@@ -330,6 +398,14 @@ if menu == "Dashboard":
         st.info("No screening data")
     else:
         df = pd.DataFrame([{"risk": r.risk_level} for r in records])
+        high = (df["risk"]=="High Suspicion").sum()
+        intermediate = (df["risk"]=="Intermediate Risk").sum()
+        low = (df["risk"]=="Low Risk").sum()
+        
+        c1,c2,c3 = st.columns(3)
+        c1.metric("High Suspicion Cases", high)
+        c2.metric("Intermediate Risk", intermediate)
+        c3.metric("Low Risk", low)
 
         col1, col2 = st.columns(2)
         col1.metric("Total Screenings", len(df))
@@ -354,7 +430,7 @@ if menu == "Clinical Protocol Guide":
         ]
     })
 
-    st.table(marker_table)
+    st.dataframe(marker_table, use_container_width=True)
 
     st.subheader("Imaging Red Flags")
 
@@ -366,7 +442,7 @@ if menu == "Clinical Protocol Guide":
         ]
     })
 
-    st.table(imaging_table)
+    st.dataframe(marker_table, use_container_width=True)
 
     st.subheader("Risk Classification Summary")
 
@@ -379,7 +455,7 @@ if menu == "Clinical Protocol Guide":
         ]
     })
 
-    st.table(risk_table)
+    st.dataframe(marker_table, use_container_width=True)
 # ==========================================================
 # AUDIT LOG (Admin only)
 # ==========================================================
