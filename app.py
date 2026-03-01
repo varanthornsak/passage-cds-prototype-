@@ -14,6 +14,12 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 import tempfile
 import bcrypt
+# ===== ML IMPORT =====
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_curve, auc
+from sklearn.model_selection import train_test_split
 
 # ==========================================================
 # CONFIG
@@ -217,7 +223,7 @@ def calculate_risk_protocol(
 
 menu = st.sidebar.selectbox(
     "Navigation",
-    ["New Screening", "Recall List", "Dashboard", "Clinical Protocol Guide"]
+    ["New Screening", "Recall List", "Dashboard", "Clinical Protocol Guide", "AI Analytics"]
 )
 
 # ==========================================================
@@ -268,6 +274,9 @@ if menu == "New Screening":
             us_dilation,
             us_mass
         )
+        # Example probability approximation (until live model integration)
+        probability = min(0.05 * red_flags + 0.002 * ca19_9 + age*0.002, 0.95)
+        st.metric("Estimated CCA Probability", f"{probability:.2f}")
 
         # Follow-up scheduling
         followup = None
@@ -470,6 +479,91 @@ elif menu == "Clinical Protocol Guide":
     })
 
     st.dataframe(risk_table, use_container_width=True)
+# ==========================================================
+# AI ANALYTICS – LOGISTIC REGRESSION MODEL
+# ==========================================================
+
+elif menu == "AI Analytics":
+
+    st.header("AI Model Analytics (PASSAGE-CDS)")
+
+    records = session.query(Assessment).all()
+
+    if len(records) < 5:
+        st.warning("Need at least 5 records for model training.")
+    else:
+
+        # ==========================
+        # Dataset preparation
+        # ==========================
+        df = pd.DataFrame([{
+            "age": r.age,
+            "red_flags": r.red_flags,
+            "ca19_9": r.ca19_9,
+            "target": 1 if r.risk_level=="High Suspicion" else 0
+        } for r in records])
+
+        X = df[["age","red_flags","ca19_9"]]
+        y = df["target"]
+
+        # ==========================
+        # Train/Test split
+        # ==========================
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, random_state=42
+        )
+
+        model = LogisticRegression()
+        model.fit(X_train, y_train)
+
+        # ==========================
+        # Probability prediction
+        # ==========================
+        y_prob = model.predict_proba(X_test)[:,1]
+
+        # ==========================
+        # ROC + AUC
+        # ==========================
+        fpr, tpr, _ = roc_curve(y_test, y_prob)
+        roc_auc = auc(fpr, tpr)
+
+        fig = plt.figure()
+        plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.2f}")
+        plt.plot([0,1],[0,1],'--')
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.legend()
+
+        st.pyplot(fig)
+
+        st.metric("Model AUC", round(roc_auc,3))
+
+        # ==========================
+        # Model coefficients
+        # ==========================
+        coef_df = pd.DataFrame({
+            "Feature": X.columns,
+            "Coefficient": model.coef_[0]
+        })
+
+        st.subheader("Model Explainability (Logistic Coefficients)")
+        st.dataframe(coef_df, use_container_width=True)
+
+        # ==========================
+        # Population risk distribution
+        # ==========================
+        st.subheader("Population Risk Probability Distribution")
+
+        probs_all = model.predict_proba(X)[:,1]
+
+        fig2 = plt.figure()
+        plt.hist(probs_all, bins=10)
+        plt.xlabel("Predicted Probability")
+        plt.ylabel("Patients")
+
+        st.pyplot(fig2)
+
+        st.success("Model training completed successfully.")
 # ==========================================================
 # AUDIT LOG (Admin only)
 # ==========================================================
