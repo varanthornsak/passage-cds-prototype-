@@ -16,15 +16,14 @@ import tempfile
 import bcrypt
 # ===== SAFE ML IMPORT =====
 ML_AVAILABLE = True
-from sklearn.metrics import confusion_matrix, brier_score_loss
 try:
     import numpy as np
     import matplotlib.pyplot as plt
     plt.ioff()
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import roc_curve, auc
+    from sklearn.metrics import roc_curve, auc, confusion_matrix, brier_score_loss
     from sklearn.model_selection import train_test_split
-except Exception as e:
+except Exception:
     ML_AVAILABLE = False
 # ==========================================================
 # CONFIG
@@ -206,10 +205,9 @@ def calculate_risk_protocol(
 
 @st.cache_data(show_spinner=False)
 def train_ml_model(record_count):
-return model
+
     records = session.query(Assessment).all()
 
-    # ต้องมีข้อมูลขั้นต่ำ
     if len(records) < 5:
         return None
 
@@ -223,7 +221,7 @@ return model
     X = df[["age", "red_flags", "ca19_9"]]
     y = df["target"]
 
-    model = LogisticRegression()
+    model = LogisticRegression(max_iter=1000)
     model.fit(X, y)
 
     return model
@@ -273,17 +271,17 @@ if menu == "New Screening":
     if st.button("Evaluate Risk"):
 
         risk = calculate_risk_protocol(
-    age,
-    raw_fish,
-    psc,
-    abnormal_lft,
-    red_flags,
-    ca19_9,
-    alp,
-    bilirubin,
-    us_dilation,
-    us_mass
-)
+            age,
+            raw_fish,
+            psc,
+            abnormal_lft,
+            red_flags,
+            ca19_9,
+            alp,
+            bilirubin,
+            us_dilation,
+            us_mass
+        )
 
 # =====================================
 # REAL ML PROBABILITY (AUTO MODEL)
