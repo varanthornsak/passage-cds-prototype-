@@ -21,7 +21,15 @@ try:
     import matplotlib.pyplot as plt
     plt.ioff()
     from sklearn.linear_model import LogisticRegression
+    try:
+    import numpy as np
+    import matplotlib.pyplot as plt
+    plt.ioff()
+    from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import roc_curve, auc, confusion_matrix, brier_score_loss
+    from sklearn.model_selection import train_test_split
+except Exception:
+    ML_AVAILABLE = False
     from sklearn.model_selection import train_test_split
 except Exception:
     ML_AVAILABLE = False
@@ -283,31 +291,31 @@ if menu == "New Screening":
             us_mass
         )
 
-# =====================================
-# REAL ML PROBABILITY (AUTO MODEL)
-# =====================================
-record_count = session.query(Assessment).count()
-model = None
-if record_count >= 5:
-    model = train_ml_model(record_count)
-
-if model is not None:
-
-    X_new = pd.DataFrame([{
-        "age": age,
-        "red_flags": red_flags,
-        "ca19_9": ca19_9
-    }])
-
-    probability = model.predict_proba(X_new)[0][1]
-
-    st.metric(
-        "CCA Probability (ML Model)",
-        f"{probability:.2%}"
-    )
-
-else:
-    st.info("Model will activate after ≥5 patients.")
+        # =====================================
+        # REAL ML PROBABILITY (AUTO MODEL)
+        # =====================================
+        record_count = session.query(Assessment).count()
+        model = None
+        if record_count >= 5:
+            model = train_ml_model(record_count)
+        
+        if model is not None:
+        
+            X_new = pd.DataFrame([{
+                "age": age,
+                "red_flags": red_flags,
+                "ca19_9": ca19_9
+            }])
+        
+            probability = model.predict_proba(X_new)[0][1]
+        
+            st.metric(
+                "CCA Probability (ML Model)",
+                f"{probability:.2%}"
+            )
+        
+        else:
+            st.info("Model will activate after ≥5 patients.")
         
         # Follow-up scheduling
         followup = None
@@ -622,12 +630,13 @@ elif menu == "AI Analytics":
         st.pyplot(fig2)
 
         st.success("Model training completed successfully.")
-# ==========================================================
-# CLINICAL AI VALIDATION LAYER
-# ==========================================================
+        # ==========================================================
+        # CLINICAL AI VALIDATION LAYER
+        # ==========================================================
+        
+        st.markdown("---")
+        st.header("Clinical Model Validation")
 
-st.markdown("---")
-st.header("Clinical Model Validation")
 
 # ===============================
 # Sensitivity / Specificity
