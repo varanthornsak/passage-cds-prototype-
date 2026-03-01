@@ -383,41 +383,49 @@ if menu == "Recall List":
 # ==========================================================
 
 if menu == "Dashboard":
-    high = (df["risk"]=="High Suspicion").sum()
-    intermediate = (df["risk"]=="Intermediate Risk").sum()
-    low = (df["risk"]=="Low Risk").sum()
-    
-    c1,c2,c3 = st.columns(3)
-    c1.metric("High Suspicion Cases", high)
-    c2.metric("Intermediate Risk", intermediate)
-    c3.metric("Low Risk", low)
+
+    st.header("Screening Dashboard")
 
     records = session.query(Assessment).all()
 
     if not records:
-        st.info("No screening data")
+        st.info("No screening data available.")
     else:
         df = pd.DataFrame([{"risk": r.risk_level} for r in records])
-        high = (df["risk"]=="High Suspicion").sum()
-        intermediate = (df["risk"]=="Intermediate Risk").sum()
-        low = (df["risk"]=="Low Risk").sum()
-        
-        c1,c2,c3 = st.columns(3)
+
+        # ===== KPI =====
+        high = (df["risk"] == "High Suspicion").sum()
+        intermediate = (df["risk"] == "Intermediate Risk").sum()
+        low = (df["risk"] == "Low Risk").sum()
+
+        c1, c2, c3 = st.columns(3)
         c1.metric("High Suspicion Cases", high)
         c2.metric("Intermediate Risk", intermediate)
         c3.metric("Low Risk", low)
 
+        st.markdown("---")
+
         col1, col2 = st.columns(2)
         col1.metric("Total Screenings", len(df))
-        col2.metric("High Risk %",
-                    round((df["risk"]=="High Risk").mean()*100,1))
+        col2.metric(
+            "High Suspicion %",
+            round((df["risk"] == "High Suspicion").mean() * 100, 1)
+        )
 
         st.bar_chart(df["risk"].value_counts())
 
-if menu == "Clinical Protocol Guide":
+
+# ==========================================================
+# CLINICAL PROTOCOL GUIDE
+# ==========================================================
+
+elif menu == "Clinical Protocol Guide":
 
     st.header("CCA Screening Protocol Reference")
 
+    # ===============================
+    # Tumor Marker
+    # ===============================
     st.subheader("Tumor Marker Reference")
 
     marker_table = pd.DataFrame({
@@ -432,6 +440,9 @@ if menu == "Clinical Protocol Guide":
 
     st.dataframe(marker_table, use_container_width=True)
 
+    # ===============================
+    # Imaging
+    # ===============================
     st.subheader("Imaging Red Flags")
 
     imaging_table = pd.DataFrame({
@@ -442,8 +453,11 @@ if menu == "Clinical Protocol Guide":
         ]
     })
 
-    st.dataframe(marker_table, use_container_width=True)
+    st.dataframe(imaging_table, use_container_width=True)
 
+    # ===============================
+    # Risk Summary
+    # ===============================
     st.subheader("Risk Classification Summary")
 
     risk_table = pd.DataFrame({
@@ -455,7 +469,7 @@ if menu == "Clinical Protocol Guide":
         ]
     })
 
-    st.dataframe(marker_table, use_container_width=True)
+    st.dataframe(risk_table, use_container_width=True)
 # ==========================================================
 # AUDIT LOG (Admin only)
 # ==========================================================
