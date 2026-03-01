@@ -14,13 +14,16 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 import tempfile
 import bcrypt
-# ===== ML IMPORT =====
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_curve, auc
-from sklearn.model_selection import train_test_split
-
+# ===== ML IMPORT (SAFE MODE) =====
+try:
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import roc_curve, auc
+    from sklearn.model_selection import train_test_split
+    ML_AVAILABLE = True
+except Exception:
+    ML_AVAILABLE = False
 # ==========================================================
 # CONFIG
 # ==========================================================
@@ -52,27 +55,6 @@ engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 session = Session()
 Base = declarative_base()
-st.markdown("""
-<style>
-.main-title {
-    font-size:28px;
-    font-weight:700;
-}
-.subtitle {
-    color:gray;
-    margin-bottom:10px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<div class='main-title'>PASSAGE Clinical Decision Support System</div>
-<div class='subtitle'>
-Cholangiocarcinoma Risk Stratification Platform | Hospital Edition
-</div>
-<hr>
-""", unsafe_allow_html=True)
-
 # ==========================================================
 # MODELS
 # ==========================================================
@@ -484,6 +466,13 @@ elif menu == "Clinical Protocol Guide":
 # ==========================================================
 
 elif menu == "AI Analytics":
+
+    st.header("AI Model Analytics (PASSAGE-CDS)")
+
+    if not ML_AVAILABLE:
+        st.error("Machine Learning modules not installed.")
+        st.info("Check requirements.txt and rebuild environment.")
+        st.stop()
 
     st.header("AI Model Analytics (PASSAGE-CDS)")
 
