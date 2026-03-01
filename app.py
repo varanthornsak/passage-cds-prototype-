@@ -16,21 +16,21 @@ import tempfile
 import bcrypt
 # ===== SAFE ML IMPORT =====
 ML_AVAILABLE = True
+
 try:
     import numpy as np
     import matplotlib.pyplot as plt
     plt.ioff()
+
     from sklearn.linear_model import LogisticRegression
-    try:
-    import numpy as np
-    import matplotlib.pyplot as plt
-    plt.ioff()
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import roc_curve, auc, confusion_matrix, brier_score_loss
+    from sklearn.metrics import (
+        roc_curve,
+        auc,
+        confusion_matrix,
+        brier_score_loss
+    )
     from sklearn.model_selection import train_test_split
-except Exception:
-    ML_AVAILABLE = False
-    from sklearn.model_selection import train_test_split
+
 except Exception:
     ML_AVAILABLE = False
 # ==========================================================
@@ -636,73 +636,93 @@ elif menu == "AI Analytics":
         
         st.markdown("---")
         st.header("Clinical Model Validation")
+        
+        # ป้องกัน crash ถ้า variable ยังไม่มี
+        if "y_prob" not in locals():
+            st.info("Model validation will appear after training.")
+        else:
+        
+            # ===============================
+            # Sensitivity / Specificity
+            # ===============================
+            st.subheader("Diagnostic Performance")
+        
+            y_pred = (y_prob >= 0.5).astype(int)
+        
+            cm = confusion_matrix(y_test, y_pred)
+        
+            if cm.shape == (2, 2):
+                tn, fp, fn, tp = cm.ravel()
+        
+                sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+                specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+            else:
+                sensitivity = 0
+                specificity = 0
+        
+            c1, c2 = st.columns(2)
+            c1.metric("Sensitivity (Recall)", f"{sensitivity:.2f}")
+            c2.metric("Specificity", f"{specificity:.2f}")
+        
+            # ===============================
+            # Calibration Curve
+            # ===============================
+            st.subheader("Calibration Curve (Model Reliability)")
+        
+            calibration_df = pd.DataFrame({
+                "prob": y_prob,
+                "actual": y_test
+            })
+        
+            try:
+                calibration_df["bin"] = pd.qcut(
+                    calibration_df["prob"],
+                    q=5,
+                    duplicates="drop"
+                )
+        
+                calibration = calibration_df.groupby("bin").mean(numeric_only=True)
+        
+                fig_cal = plt.figure()
+                plt.plot(calibration["prob"], calibration["actual"], marker="o")
+                plt.plot([0, 1], [0, 1], "--")
+                plt.xlabel("Predicted Probability")
+                plt.ylabel("Observed Frequency")
+                plt.title("Calibration Curve")
+        
+                st.pyplot(fig_cal)
+        
+                brier = brier_score_loss(y_test, y_prob)
+                st.metric("Brier Score (Lower is better)", round(brier, 3))
+        
+            except Exception:
+                st.warning("Calibration requires more diverse probability values.")
+        
+            # ===============================
+            # Clinical Explainability
+            # ===============================
+            st.subheader("Clinical Explainability (Feature Impact)")
+        
+            explain_df = coef_df.copy()
+            explain_df["Odds Ratio"] = np.exp(explain_df["Coefficient"])
+        
+            st.dataframe(
+                explain_df[["Feature", "Coefficient", "Odds Ratio"]],
+                use_container_width=True
+            )
+        
+            st.info("""
+        Interpretation Guide:
+        
+        • Odds Ratio > 1 → increases CCA probability  
+        • Odds Ratio < 1 → protective association  
+        • Larger magnitude = stronger clinical influence
+        
+        Derived from Logistic Regression coefficients.
+        Clinically interpretable (transparent AI).
+        """)
 
 
-# ===============================
-# Sensitivity / Specificity
-# ===============================
-st.subheader("Diagnostic Performance")
-
-y_pred = (y_prob >= 0.5).astype(int)
-
-cm = confusion_matrix(y_test, y_pred)
-
-tn, fp, fn, tp = cm.ravel()
-
-sensitivity = tp / (tp + fn) if (tp+fn) > 0 else 0
-specificity = tn / (tn + fp) if (tn+fp) > 0 else 0
-
-c1, c2 = st.columns(2)
-c1.metric("Sensitivity (Recall)", f"{sensitivity:.2f}")
-c2.metric("Specificity", f"{specificity:.2f}")
-
-# ===============================
-# Calibration Curve
-# ===============================
-st.subheader("Calibration Curve (Model Reliability)")
-
-bins = pd.qcut(y_prob, q=5, duplicates="drop")
-
-calibration_df = pd.DataFrame({
-    "prob": y_prob,
-    "actual": y_test,
-    "bin": bins
-})
-
-calibration = calibration_df.groupby("bin").mean()
-
-fig_cal = plt.figure()
-plt.plot(calibration["prob"], calibration["actual"], marker="o")
-plt.plot([0,1],[0,1],'--')
-plt.xlabel("Predicted Probability")
-plt.ylabel("Observed Frequency")
-plt.title("Calibration Curve")
-
-st.pyplot(fig_cal)
-
-brier = brier_score_loss(y_test, y_prob)
-st.metric("Brier Score (Lower is better)", round(brier,3))
-
-# ===============================
-# Clinical Explainability
-# ===============================
-st.subheader("Clinical Explainability (Feature Impact)")
-
-coef_df["Odds Ratio"] = np.exp(coef_df["Coefficient"])
-
-st.dataframe(coef_df[["Feature","Coefficient","Odds Ratio"]],
-             use_container_width=True)
-
-st.info("""
-Interpretation Guide:
-
-• Odds Ratio > 1 → increases CCA probability  
-• Odds Ratio < 1 → protective association  
-• Larger magnitude = stronger clinical influence
-
-This explanation is derived from Logistic Regression coefficients
-and is interpretable for clinical decision-making.
-""")
 # ==========================================================
 # AUDIT LOG (Admin only)
 # ==========================================================
