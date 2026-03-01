@@ -20,6 +20,7 @@ from sklearn.metrics import confusion_matrix, brier_score_loss
 try:
     import numpy as np
     import matplotlib.pyplot as plt
+    plt.ioff()
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import roc_curve, auc
     from sklearn.model_selection import train_test_split
@@ -203,9 +204,9 @@ def calculate_risk_protocol(
 # AUTO ML ENGINE (PASSAGE-CDS)
 # ==========================================================
 
-@st.cache_resource
-def train_ml_model():
-
+@st.cache_data(show_spinner=False)
+def train_ml_model(record_count):
+return model
     records = session.query(Assessment).all()
 
     # ต้องมีข้อมูลขั้นต่ำ
@@ -287,7 +288,10 @@ if menu == "New Screening":
 # =====================================
 # REAL ML PROBABILITY (AUTO MODEL)
 # =====================================
-model = train_ml_model()
+record_count = session.query(Assessment).count()
+model = None
+if record_count >= 5:
+    model = train_ml_model(record_count)
 
 if model is not None:
 
